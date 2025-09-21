@@ -1,0 +1,8 @@
+name = "vpn-manager"
+type = "webpack"
+account_id = "bbcd656c77807de9d0ae2e953a2d441a" # Ganti dengan account ID Anda
+workers_dev = true
+
+[site]
+bucket = "./"
+entry-point = "workers-site"
