@@ -1,0 +1,1514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VPN Proxy Manager - Proxy List</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* Custom animations */
+        @keyframes slideIn {
+            from { transform: translateY(-10px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .slide-in { animation: slideIn 0.3s ease-out; }
+        .fade-in { animation: fadeIn 0.3s ease-out; }
+        .pulse { animation: pulse 2s infinite; }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+        
+        /* Proxy card styles */
+        .proxy-card {
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .proxy-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        }
+        
+        /* Status indicators */
+        .status-online { 
+            background-color: #10B981; 
+            color: white;
+        }
+        .status-offline { 
+            background-color: #EF4444; 
+            color: white;
+        }
+        .status-unknown { 
+            background-color: #F59E0B; 
+            color: white;
+        }
+        
+        /* Latency indicators */
+        .latency-low { color: #10B981; }
+        .latency-medium { color: #F59E0B; }
+        .latency-high { color: #EF4444; }
+        
+        /* Flag icon */
+        .flag-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+        
+        /* Card hover effects */
+        .card-hover {
+            transition: all 0.3s ease;
+        }
+        
+        .card-hover:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+        }
+        
+        /* Mobile menu */
+        .mobile-menu {
+            transform: translateX(-100%);
+            transition: transform 0.3s ease;
+        }
+        
+        .mobile-menu.active {
+            transform: translateX(0);
+        }
+        
+        /* FAB styles */
+        .fab {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+        
+        .fab:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+        }
+        
+        /* Config button */
+        .config-btn {
+            transition: all 0.2s ease;
+        }
+        
+        .config-btn:hover {
+            transform: scale(1.05);
+        }
+        
+        /* Dark mode styles */
+        .dark {
+            background-color: #1a202c;
+            color: #e2e8f0;
+        }
+        
+        .dark .bg-white {
+            background-color: #2d3748;
+        }
+        
+        .dark .text-gray-900 {
+            color: #e2e8f0;
+        }
+        
+        .dark .text-gray-600 {
+            color: #cbd5e0;
+        }
+        
+        .dark .text-gray-500 {
+            color: #a0aec0;
+        }
+        
+        .dark .border-gray-200 {
+            border-color: #4a5568;
+        }
+        
+        .dark .bg-gray-50 {
+            background-color: #2d3748;
+        }
+        
+        .dark .hover\:bg-gray-100:hover {
+            background-color: #4a5568;
+        }
+        
+        /* Tunnel dropdown styles */
+        .tunnel-dropdown {
+            position: absolute;
+            right: 0;
+            top: 100%;
+            width: 320px;
+            max-height: 400px;
+            overflow-y: auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+        }
+        
+        .dark .tunnel-dropdown {
+            background: #2d3748;
+        }
+        
+        .tunnel-item {
+            transition: all 0.2s ease;
+        }
+        
+        .tunnel-item:hover {
+            background-color: #f3f4f6;
+        }
+        
+        .dark .tunnel-item:hover {
+            background-color: #4a5568;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Top Navigation Bar -->
+    <nav class="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <!-- Logo and Main Menu -->
+                <div class="flex items-center space-x-8">
+                    <!-- Mobile menu button -->
+                    <button id="mobileMenuBtn" class="md:hidden p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100">
+                        <i class="fas fa-bars text-xl"></i>
+                    </button>
+                    
+                    <!-- Logo -->
+                    <div class="flex items-center space-x-3">
+                        <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-shield-alt text-white text-sm"></i>
+                        </div>
+                        <span class="text-xl font-bold text-gray-900">VPN Manager</span>
+                    </div>
+                    
+                    <!-- Desktop Main Menu -->
+                    <div class="hidden md:flex space-x-6">
+                        <a href="index.html" class="text-gray-600 hover:text-blue-600 px-3 py-2 text-sm font-medium transition-colors">Dashboard</a>
+                        <a href="proxy.html" class="text-blue-600 px-3 py-2 text-sm font-medium border-b-2 border-blue-600">Proxies</a>
+                        <a href="subscription.html" class="text-gray-600 hover:text-blue-600 px-3 py-2 text-sm font-medium transition-colors">Subscribe</a>
+                        <a href="accounts.html" class="text-gray-600 hover:text-blue-600 px-3 py-2 text-sm font-medium transition-colors">Accounts</a>
+                    </div>
+                </div>
+                
+                <!-- Right Side Controls -->
+                <div class="flex items-center space-x-4">
+                    <!-- Search Bar -->
+                    <div class="hidden md:block relative">
+                        <input type="text" placeholder="Search proxies..." class="w-64 pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <i class="fas fa-search absolute left-3 top-3 text-gray-400"></i>
+                    </div>
+                    
+                    <!-- Notifications -->
+                    <button class="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
+                        <i class="fas fa-bell text-lg"></i>
+                        <span class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+                    </button>
+                    
+                    <!-- Tunnel Management Dropdown -->
+                    <div class="relative">
+                        <button id="tunnelDropdownBtn" class="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100 transition-colors">
+                            <i class="fas fa-server text-gray-600"></i>
+                            <span class="text-sm font-medium text-gray-700">Tunnels</span>
+                            <i class="fas fa-chevron-down text-xs text-gray-600"></i>
+                        </button>
+                        
+                        <!-- Tunnel Dropdown Menu -->
+                        <div id="tunnelDropdown" class="tunnel-dropdown hidden">
+                            <div class="p-4 border-b border-gray-200">
+                                <div class="flex justify-between items-center mb-2">
+                                    <h3 class="font-semibold text-gray-900">Worker Tunnels</h3>
+                                    <button id="addTunnelBtn" class="text-blue-600 hover:text-blue-800">
+                                        <i class="fas fa-plus"></i>
+                                    </button>
+                                </div>
+                                <p class="text-xs text-gray-500">Manage your Cloudflare Worker domains</p>
+                            </div>
+                            
+                            <div id="tunnelList" class="divide-y divide-gray-200">
+                                <!-- Tunnel items will be inserted here -->
+                            </div>
+                            
+                            <div id="tunnelEmptyState" class="hidden p-4 text-center">
+                                <i class="fas fa-inbox text-gray-300 text-2xl mb-2"></i>
+                                <p class="text-sm text-gray-500">No tunnels configured</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Theme Toggle -->
+                    <button id="themeToggle" class="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
+                        <i class="fas fa-moon text-lg"></i>
+                    </button>
+                    
+                    <!-- User Menu -->
+                    <div class="relative">
+                        <button id="userMenuBtn" class="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100 transition-colors">
+                            <img src="https://picsum.photos/seed/user/32/32.jpg" alt="User" class="w-8 h-8 rounded-full">
+                            <i class="fas fa-chevron-down text-xs text-gray-600"></i>
+                        </button>
+                        
+                        <!-- Dropdown Menu -->
+                        <div id="userMenu" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-2">
+                            <a href="profile.html" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                <i class="fas fa-tachometer-alt mr-2"></i>Dashboard
+                            </a>
+                            <hr class="my-2">
+                            <a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                <i class="fas fa-user mr-2"></i>Profile
+                            </a>
+                            <a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                <i class="fas fa-cog mr-2"></i>Settings
+                            </a>
+                            <hr class="my-2">
+                            <a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                <i class="fas fa-sign-out-alt mr-2"></i>Logout
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Mobile Menu -->
+    <div id="mobileMenu" class="mobile-menu fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-lg md:hidden">
+        <div class="p-4">
+            <div class="flex items-center justify-between mb-6">
+                <div class="flex items-center space-x-3">
+                    <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-shield-alt text-white text-sm"></i>
+                    </div>
+                    <span class="text-xl font-bold text-gray-900">VPN Manager</span>
+                </div>
+                <button id="closeMobileMenu" class="p-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <nav class="space-y-2">
+                <a href="index.html" class="block px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Dashboard</a>
+                <a href="proxy.html" class="block px-4 py-2 text-blue-600 bg-blue-50 rounded-lg">Proxies</a>
+                <a href="subscription.html" class="block px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Subscribe</a>
+                <a href="accounts.html" class="block px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Accounts</a>
+            </nav>
+        </div>
+    </div>
+    
+    <!-- Main Content Area -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Controls Section -->
+        <div class="bg-white rounded-lg shadow-sm p-6 mb-8">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+                <div>
+                    <h2 class="text-xl font-semibold text-gray-900">Proxy List</h2>
+                    <p class="text-gray-600 text-sm">Browse and manage available proxies</p>
+                </div>
+                
+                <div class="flex flex-wrap gap-2">
+                    <div>
+                        <select id="countryFilter" class="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="">All Countries</option>
+                            <option value="US">🇺🇸 United States</option>
+                            <option value="SG">🇸🇬 Singapore</option>
+                            <option value="JP">🇯🇵 Japan</option>
+                            <option value="DE">🇩🇪 Germany</option>
+                            <option value="FR">🇫🇷 France</option>
+                        </select>
+                    </div>
+                    <div>
+                        <select id="statusFilter" class="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="">All Status</option>
+                            <option value="online">Online</option>
+                            <option value="offline">Offline</option>
+                            <option value="unknown">Unknown</option>
+                        </select>
+                    </div>
+                    <button id="refreshBtn" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+                        <i class="fas fa-sync-alt mr-2"></i> Refresh
+                    </button>
+                    <button id="importBtn" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors">
+                        <i class="fas fa-download mr-2"></i> Import
+                    </button>
+                </div>
+            </div>
+            
+            <div class="flex justify-between items-center">
+                <div class="text-sm text-gray-600">
+                    Showing <span id="showingFrom">0</span> to <span id="showingTo">0</span> of <span id="totalProxies">0</span> proxies
+                </div>
+                <div class="flex items-center gap-2">
+                    <label for="pageSize" class="text-sm text-gray-600">Per page:</label>
+                    <select id="pageSize" class="px-3 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="8">8</option>
+                        <option value="12" selected>12</option>
+                        <option value="16">16</option>
+                        <option value="20">20</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Proxy Cards -->
+        <div id="proxyContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-8">
+            <!-- Proxy cards will be inserted here -->
+        </div>
+        
+        <!-- Loading Indicator -->
+        <div id="loadingIndicator" class="hidden text-center py-8">
+            <i class="fas fa-spinner fa-spin text-3xl text-blue-600"></i>
+            <p class="mt-2 text-gray-600">Loading proxies...</p>
+        </div>
+        
+        <!-- Empty State -->
+        <div id="emptyState" class="text-center py-12">
+            <i class="fas fa-inbox text-5xl text-gray-300 mb-4"></i>
+            <h3 class="text-xl font-semibold text-gray-500 mb-2">No proxies found</h3>
+            <p class="text-gray-500 mb-4">Import your first proxy list to get started</p>
+            <button id="emptyStateImportBtn" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors">
+                <i class="fas fa-download mr-2"></i> Import Proxies
+            </button>
+        </div>
+        
+        <!-- Pagination -->
+        <div id="pagination" class="flex justify-center items-center space-x-2 mb-8">
+            <!-- Pagination buttons will be inserted here -->
+        </div>
+    </main>
+    
+    <!-- Floating Action Button -->
+    <button id="fabBtn" class="fab">
+        <i class="fas fa-plus text-xl"></i>
+    </button>
+    
+    <!-- FAB Menu -->
+    <div id="fabMenu" class="hidden fixed bottom-20 right-4 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
+        <button class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+            <i class="fas fa-plus mr-2"></i>Add Proxy
+        </button>
+        <button class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+            <i class="fas fa-file-export mr-2"></i>Generate Config
+        </button>
+    </div>
+    
+    <!-- Import Modal -->
+    <div id="importModal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+            <div class="p-6">
+                <h3 class="text-xl font-semibold mb-4">Import Proxies</h3>
+                
+                <div class="mb-4">
+                    <label class="block text-gray-700 mb-2">Proxy List URL</label>
+                    <input type="text" id="proxyUrlInput" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                           placeholder="https://example.com/proxy-list.txt">
+                    <p class="text-sm text-gray-600 mt-1">Format: IP,Port,Country,Organization (one per line)</p>
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-gray-700 mb-2">Source Name</label>
+                    <input type="text" id="sourceNameInput" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                           placeholder="Enter a name for this proxy source">
+                    <p class="text-sm text-gray-600 mt-1">This helps you identify where the proxies came from</p>
+                </div>
+                
+                <div class="flex justify-end gap-2">
+                    <button id="cancelImportBtn" class="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">Cancel</button>
+                    <button id="confirmImportBtn" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors">Import</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Generate Config Modal -->
+    <div id="generateConfigModal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+            <div class="p-6">
+                <h3 class="text-xl font-semibold mb-4">Generate VPN Configuration</h3>
+                
+                <div class="mb-4">
+                    <label class="block text-gray-700 mb-2">Worker Domain</label>
+                    <select id="workerDomainSelect" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="">Select a worker domain</option>
+                        <!-- Options will be populated by JavaScript -->
+                    </select>
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-gray-700 mb-2">VPN Type</label>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button class="vpn-type-btn px-3 py-2 border border-gray-300 rounded-md text-center hover:bg-gray-50 transition-colors" data-type="trojan">Trojan</button>
+                        <button class="vpn-type-btn px-3 py-2 border border-gray-300 rounded-md text-center hover:bg-gray-50 transition-colors" data-type="vless">VLESS</button>
+                        <button class="vpn-type-btn px-3 py-2 border border-gray-300 rounded-md text-center hover:bg-gray-50 transition-colors" data-type="ss">Shadowsocks</button>
+                    </div>
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-gray-700 mb-2">Port</label>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button class="port-btn px-3 py-2 border border-gray-300 rounded-md text-center hover:bg-gray-50 transition-colors" data-port="443">443 (TLS)</button>
+                        <button class="port-btn px-3 py-2 border border-gray-300 rounded-md text-center hover:bg-gray-50 transition-colors" data-port="80">80 (Non-TLS)</button>
+                    </div>
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-gray-700 mb-2">UUID/Password</label>
+                    <div class="flex">
+                        <input type="text" id="uuidInput" class="flex-1 px-4 py-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-2 focus:ring-blue-500" value="">
+                        <button id="generateUuidBtn" class="px-4 py-2 bg-gray-200 border-t border-b border-r border-gray-300 rounded-r-md hover:bg-gray-300 transition-colors">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-gray-700 mb-2">Output Format</label>
+                    <div class="grid grid-cols-4 gap-2">
+                        <button class="format-btn px-3 py-2 border border-gray-300 rounded-md text-center hover:bg-gray-50 transition-colors" data-format="uri">URI</button>
+                        <button class="format-btn px-3 py-2 border border-gray-300 rounded-md text-center hover:bg-gray-50 transition-colors" data-format="qrcode">QR Code</button>
+                        <button class="format-btn px-3 py-2 border border-gray-300 rounded-md text-center hover:bg-gray-50 transition-colors" data-format="clash">Clash</button>
+                        <button class="format-btn px-3 py-2 border border-gray-300 rounded-md text-center hover:bg-gray-50 transition-colors" data-format="singbox">Singbox</button>
+                    </div>
+                </div>
+                
+                <div class="flex justify-end gap-2">
+                    <button id="cancelGenerateBtn" class="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">Cancel</button>
+                    <button id="confirmGenerateBtn" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">Generate</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Result Modal -->
+    <div id="resultModal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-xl font-semibold">Generated Configuration</h3>
+                    <button id="closeResultBtn" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                
+                <div id="resultContent" class="mb-4">
+                    <!-- Result will be inserted here -->
+                </div>
+                
+                <div class="flex justify-end gap-2">
+                    <button id="copyResultBtn" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                        <i class="fas fa-copy mr-2"></i> Copy
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Tunnel Modal -->
+    <div id="tunnelModal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+            <div class="p-6">
+                <h3 id="tunnelModalTitle" class="text-xl font-semibold mb-4">Add New Tunnel</h3>
+                
+                <form id="tunnelForm">
+                    <input type="hidden" id="tunnelId">
+                    
+                    <div class="mb-4">
+                        <label for="tunnelName" class="block text-sm font-medium text-gray-700 mb-2">Name</label>
+                        <input type="text" id="tunnelName" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                        <p class="text-sm text-gray-600 mt-1">A friendly name to identify this tunnel</p>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label for="tunnelDomain" class="block text-sm font-medium text-gray-700 mb-2">Domain</label>
+                        <input type="text" id="tunnelDomain" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                        <p class="text-sm text-gray-600 mt-1">Your Cloudflare Worker domain (e.g., worker.example.com)</p>
+                    </div>
+                    
+                    <div class="flex justify-end gap-2">
+                        <button type="button" id="cancelTunnelBtn" class="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">Cancel</button>
+                        <button type="submit" id="saveTunnelBtn" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let proxies = [];
+        let filteredProxies = [];
+        let currentPage = 1;
+        let pageSize = 12;
+        let selectedProxy = null;
+        let selectedVpnType = 'trojan';
+        let selectedPort = '443';
+        let selectedFormat = 'uri';
+        let tunnels = [];
+        let editingTunnelId = null;
+        
+        // API Base URL - ganti dengan URL API Anda
+        const API_BASE_URL = 'https://your-api-domain.com';
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeData();
+            setupEventListeners();
+            renderProxies();
+            renderPagination();
+            renderTunnelList();
+        });
+        
+        // Initialize data
+        function initializeData() {
+            // Try to load from localStorage
+            const savedProxies = localStorage.getItem('proxyBank');
+            if (savedProxies) {
+                proxies = JSON.parse(savedProxies);
+            } else {
+                proxies = [];
+                localStorage.setItem('proxyBank', JSON.stringify(proxies));
+            }
+            
+            // Load tunnels
+            const savedTunnels = localStorage.getItem('tunnelServices');
+            if (savedTunnels) {
+                tunnels = JSON.parse(savedTunnels);
+            } else {
+                tunnels = [];
+                localStorage.setItem('tunnelServices', JSON.stringify(tunnels));
+            }
+            
+            // Update worker domain select options
+            updateWorkerDomainOptions();
+            
+            applyFilters();
+        }
+        
+        // Update worker domain options
+        function updateWorkerDomainOptions() {
+            const workerDomainSelect = document.getElementById('workerDomainSelect');
+            workerDomainSelect.innerHTML = '<option value="">Select a worker domain</option>';
+            
+            tunnels.forEach(tunnel => {
+                const option = document.createElement('option');
+                option.value = `https://${tunnel.domain}`;
+                option.textContent = `${tunnel.name} (${tunnel.domain})`;
+                workerDomainSelect.appendChild(option);
+            });
+        }
+        
+        // Setup event listeners
+        function setupEventListeners() {
+            // Mobile menu
+            const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+            const mobileMenu = document.getElementById('mobileMenu');
+            const closeMobileMenu = document.getElementById('closeMobileMenu');
+            
+            mobileMenuBtn.addEventListener('click', () => {
+                mobileMenu.classList.add('active');
+            });
+            
+            closeMobileMenu.addEventListener('click', () => {
+                mobileMenu.classList.remove('active');
+            });
+            
+            // User menu
+            const userMenuBtn = document.getElementById('userMenuBtn');
+            const userMenu = document.getElementById('userMenu');
+            
+            userMenuBtn.addEventListener('click', () => {
+                userMenu.classList.toggle('hidden');
+            });
+            
+            document.addEventListener('click', (e) => {
+                if (!userMenuBtn.contains(e.target) && !userMenu.contains(e.target)) {
+                    userMenu.classList.add('hidden');
+                }
+            });
+            
+            // Tunnel dropdown
+            const tunnelDropdownBtn = document.getElementById('tunnelDropdownBtn');
+            const tunnelDropdown = document.getElementById('tunnelDropdown');
+            
+            tunnelDropdownBtn.addEventListener('click', () => {
+                tunnelDropdown.classList.toggle('hidden');
+            });
+            
+            document.addEventListener('click', (e) => {
+                if (!tunnelDropdownBtn.contains(e.target) && !tunnelDropdown.contains(e.target)) {
+                    tunnelDropdown.classList.add('hidden');
+                }
+            });
+            
+            // Theme toggle
+            const themeToggle = document.getElementById('themeToggle');
+            let isDarkMode = false;
+            
+            themeToggle.addEventListener('click', () => {
+                isDarkMode = !isDarkMode;
+                document.body.classList.toggle('dark');
+                
+                const icon = themeToggle.querySelector('i');
+                if (isDarkMode) {
+                    icon.classList.remove('fa-moon');
+                    icon.classList.add('fa-sun');
+                } else {
+                    icon.classList.remove('fa-sun');
+                    icon.classList.add('fa-moon');
+                }
+            });
+            
+            // FAB
+            const fabBtn = document.getElementById('fabBtn');
+            const fabMenu = document.getElementById('fabMenu');
+            
+            fabBtn.addEventListener('click', () => {
+                fabMenu.classList.toggle('hidden');
+            });
+            
+            document.addEventListener('click', (e) => {
+                if (!fabBtn.contains(e.target) && !fabMenu.contains(e.target)) {
+                    fabMenu.classList.add('hidden');
+                }
+            });
+            
+            // Import button
+            document.getElementById('importBtn').addEventListener('click', () => {
+                document.getElementById('importModal').classList.remove('hidden');
+            });
+            
+            document.getElementById('emptyStateImportBtn').addEventListener('click', () => {
+                document.getElementById('importModal').classList.remove('hidden');
+            });
+            
+            // Cancel import
+            document.getElementById('cancelImportBtn').addEventListener('click', () => {
+                document.getElementById('importModal').classList.add('hidden');
+                document.getElementById('proxyUrlInput').value = '';
+                document.getElementById('sourceNameInput').value = '';
+            });
+            
+            // Confirm import
+            document.getElementById('confirmImportBtn').addEventListener('click', importProxies);
+            
+            // Refresh button
+            document.getElementById('refreshBtn').addEventListener('click', async () => {
+                await checkAllProxiesHealth();
+                updateLastUpdateTime();
+            });
+            
+            // Filters
+            document.getElementById('countryFilter').addEventListener('change', () => {
+                currentPage = 1;
+                applyFilters();
+                renderProxies();
+                renderPagination();
+            });
+            
+            document.getElementById('statusFilter').addEventListener('change', () => {
+                currentPage = 1;
+                applyFilters();
+                renderProxies();
+                renderPagination();
+            });
+            
+            // Page size
+            document.getElementById('pageSize').addEventListener('change', (e) => {
+                pageSize = parseInt(e.target.value);
+                currentPage = 1;
+                renderProxies();
+                renderPagination();
+            });
+            
+            // VPN type buttons
+            document.querySelectorAll('.vpn-type-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.vpn-type-btn').forEach(b => {
+                        b.classList.remove('bg-blue-600', 'text-white');
+                    });
+                    btn.classList.add('bg-blue-600', 'text-white');
+                    selectedVpnType = btn.dataset.type;
+                });
+            });
+            
+            // Port buttons
+            document.querySelectorAll('.port-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.port-btn').forEach(b => {
+                        b.classList.remove('bg-blue-600', 'text-white');
+                    });
+                    btn.classList.add('bg-blue-600', 'text-white');
+                    selectedPort = btn.dataset.port;
+                });
+            });
+            
+            // Format buttons
+            document.querySelectorAll('.format-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.format-btn').forEach(b => {
+                        b.classList.remove('bg-blue-600', 'text-white');
+                    });
+                    btn.classList.add('bg-blue-600', 'text-white');
+                    selectedFormat = btn.dataset.format;
+                });
+            });
+            
+            // Generate UUID
+            document.getElementById('generateUuidBtn').addEventListener('click', generateUUID);
+            
+            // Cancel generate
+            document.getElementById('cancelGenerateBtn').addEventListener('click', () => {
+                document.getElementById('generateConfigModal').classList.add('hidden');
+            });
+            
+            // Confirm generate
+            document.getElementById('confirmGenerateBtn').addEventListener('click', generateConfiguration);
+            
+            // Close result
+            document.getElementById('closeResultBtn').addEventListener('click', () => {
+                document.getElementById('resultModal').classList.add('hidden');
+            });
+            
+            // Copy result
+            document.getElementById('copyResultBtn').addEventListener('click', copyResult);
+            
+            // Tunnel management
+            document.getElementById('addTunnelBtn').addEventListener('click', openAddTunnelModal);
+            document.getElementById('tunnelForm').addEventListener('submit', saveTunnel);
+            document.getElementById('cancelTunnelBtn').addEventListener('click', () => {
+                document.getElementById('tunnelModal').classList.add('hidden');
+            });
+            
+            // Set default selections
+            document.querySelector('.vpn-type-btn[data-type="trojan"]').classList.add('bg-blue-600', 'text-white');
+            document.querySelector('.port-btn[data-port="443"]').classList.add('bg-blue-600', 'text-white');
+            document.querySelector('.format-btn[data-format="uri"]').classList.add('bg-blue-600', 'text-white');
+        }
+        
+        // Render tunnel list in dropdown
+        function renderTunnelList() {
+            const tunnelList = document.getElementById('tunnelList');
+            const tunnelEmptyState = document.getElementById('tunnelEmptyState');
+            
+            if (tunnels.length === 0) {
+                tunnelList.innerHTML = '';
+                tunnelEmptyState.classList.remove('hidden');
+                return;
+            }
+            
+            tunnelEmptyState.classList.add('hidden');
+            
+            tunnelList.innerHTML = tunnels.map(tunnel => {
+                const statusClass = tunnel.status === 'online' ? 'text-green-600' : 
+                                   tunnel.status === 'offline' ? 'text-red-600' : 'text-yellow-600';
+                
+                const statusIcon = tunnel.status === 'online' ? 'check-circle' : 
+                                  tunnel.status === 'offline' ? 'times-circle' : 'exclamation-circle';
+                
+                return `
+                    <div class="tunnel-item p-3">
+                        <div class="flex justify-between items-start">
+                            <div class="flex-1">
+                                <div class="flex items-center mb-1">
+                                    <h4 class="font-medium text-gray-900">${tunnel.name}</h4>
+                                    <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusClass}">
+                                        <i class="fas fa-${statusIcon} mr-1"></i>
+                                        ${tunnel.status}
+                                    </span>
+                                </div>
+                                <p class="text-sm text-gray-600">${tunnel.domain}</p>
+                            </div>
+                            <div class="flex space-x-1 ml-2">
+                                <button onclick="editTunnel('${tunnel.id}')" class="p-1 text-gray-500 hover:text-blue-600">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button onclick="confirmDeleteTunnel('${tunnel.id}')" class="p-1 text-gray-500 hover:text-red-600">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        // Open add tunnel modal
+        function openAddTunnelModal() {
+            editingTunnelId = null;
+            document.getElementById('tunnelModalTitle').textContent = 'Add New Tunnel';
+            document.getElementById('tunnelForm').reset();
+            document.getElementById('tunnelModal').classList.remove('hidden');
+        }
+        
+        // Save tunnel
+        function saveTunnel(e) {
+            e.preventDefault();
+            
+            const tunnelId = document.getElementById('tunnelId').value;
+            const name = document.getElementById('tunnelName').value;
+            const domain = document.getElementById('tunnelDomain').value;
+            
+            if (editingTunnelId) {
+                // Update existing tunnel
+                const index = tunnels.findIndex(t => t.id === editingTunnelId);
+                if (index !== -1) {
+                    tunnels[index] = {
+                        ...tunnels[index],
+                        name,
+                        domain
+                    };
+                }
+            } else {
+                // Add new tunnel
+                const newTunnel = {
+                    id: crypto.randomUUID(),
+                    name,
+                    domain,
+                    status: 'unknown'
+                };
+                tunnels.push(newTunnel);
+            }
+            
+            // Save to localStorage
+            localStorage.setItem('tunnelServices', JSON.stringify(tunnels));
+            
+            // Update UI
+            renderTunnelList();
+            updateWorkerDomainOptions();
+            
+            // Close modal
+            document.getElementById('tunnelModal').classList.add('hidden');
+            
+            // Check tunnel status
+            if (!editingTunnelId) {
+                checkTunnelStatus(tunnels[tunnels.length - 1]);
+            }
+        }
+        
+        // Edit tunnel
+        function editTunnel(tunnelId) {
+            const tunnel = tunnels.find(t => t.id === tunnelId);
+            if (!tunnel) return;
+            
+            editingTunnelId = tunnelId;
+            document.getElementById('tunnelModalTitle').textContent = 'Edit Tunnel';
+            document.getElementById('tunnelId').value = tunnel.id;
+            document.getElementById('tunnelName').value = tunnel.name;
+            document.getElementById('tunnelDomain').value = tunnel.domain;
+            
+            document.getElementById('tunnelModal').classList.remove('hidden');
+        }
+        
+        // Confirm delete tunnel
+        function confirmDeleteTunnel(tunnelId) {
+            if (confirm('Are you sure you want to delete this tunnel?')) {
+                deleteTunnel(tunnelId);
+            }
+        }
+        
+        // Delete tunnel
+        function deleteTunnel(tunnelId) {
+            tunnels = tunnels.filter(t => t.id !== tunnelId);
+            
+            // Save to localStorage
+            localStorage.setItem('tunnelServices', JSON.stringify(tunnels));
+            
+            // Update UI
+            renderTunnelList();
+            updateWorkerDomainOptions();
+        }
+        
+        // Check tunnel status
+        async function checkTunnelStatus(tunnel) {
+            try {
+                // Check if the tunnel is accessible
+                const response = await fetch(`https://${tunnel.domain}`);
+                
+                if (response.ok) {
+                    tunnel.status = 'online';
+                } else {
+                    tunnel.status = 'offline';
+                }
+            } catch (error) {
+                tunnel.status = 'offline';
+            }
+            
+            // Update localStorage
+            localStorage.setItem('tunnelServices', JSON.stringify(tunnels));
+            
+            // Update UI
+            renderTunnelList();
+        }
+        
+        // Apply filters
+        function applyFilters() {
+            const countryFilter = document.getElementById('countryFilter').value;
+            const statusFilter = document.getElementById('statusFilter').value;
+            
+            filteredProxies = proxies;
+            
+            if (countryFilter) {
+                filteredProxies = filteredProxies.filter(proxy => proxy.country === countryFilter);
+            }
+            
+            if (statusFilter) {
+                filteredProxies = filteredProxies.filter(proxy => proxy.status === statusFilter);
+            }
+            
+            // Update counters
+            document.getElementById('totalProxies').textContent = filteredProxies.length;
+        }
+        
+        // Render proxies
+        function renderProxies() {
+            const proxyContainer = document.getElementById('proxyContainer');
+            const emptyState = document.getElementById('emptyState');
+            
+            if (filteredProxies.length === 0) {
+                proxyContainer.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                return;
+            }
+            
+            emptyState.classList.add('hidden');
+            
+            // Calculate pagination
+            const startIndex = (currentPage - 1) * pageSize;
+            const endIndex = Math.min(startIndex + pageSize, filteredProxies.length);
+            const paginatedProxies = filteredProxies.slice(startIndex, endIndex);
+            
+            // Update showing counters
+            document.getElementById('showingFrom').textContent = filteredProxies.length > 0 ? startIndex + 1 : 0;
+            document.getElementById('showingTo').textContent = endIndex;
+            
+            // Render proxy cards
+            proxyContainer.innerHTML = paginatedProxies.map((proxy, index) => {
+                const latencyClass = proxy.latency < 70 ? 'latency-low' : proxy.latency < 150 ? 'latency-medium' : 'latency-high';
+                const latencyText = proxy.status === 'offline' ? '-' : `${proxy.latency}ms`;
+                
+                return `
+                    <div class="proxy-card bg-white rounded-lg shadow-md overflow-hidden">
+                        <div class="p-4">
+                            <div class="flex justify-between items-start mb-3">
+                                <div class="flex items-center">
+                                    <img src="https://hatscripts.github.io/circle-flags/flags/${proxy.country.toLowerCase()}.svg" 
+                                         alt="${proxy.country}" class="flag-icon mr-2">
+                                    <div>
+                                        <h3 class="font-semibold text-gray-900">${getCountryName(proxy.country)}</h3>
+                                        <p class="text-xs text-gray-500">${proxy.org}</p>
+                                    </div>
+                                </div>
+                                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium 
+                                    ${proxy.status === 'online' ? 'bg-green-100 text-green-800' : 
+                                      proxy.status === 'offline' ? 'bg-red-100 text-red-800' : 
+                                      'bg-yellow-100 text-yellow-800'}">
+                                    <span class="w-2 h-2 rounded-full mr-1 
+                                        ${proxy.status === 'online' ? 'bg-green-500' : 
+                                          proxy.status === 'offline' ? 'bg-red-500' : 
+                                          'bg-yellow-500'}"></span>
+                                    ${proxy.status}
+                                </span>
+                            </div>
+                            
+                            <div class="mb-4 space-y-2">
+                                <div class="text-sm text-gray-600">
+                                    <i class="fas fa-server mr-2"></i>
+                                    <span class="font-medium">${proxy.proxyIP}</span>
+                                </div>
+                                <div class="text-sm text-gray-600">
+                                    <i class="fas fa-network-wired mr-2"></i>
+                                    Port: <span class="font-medium">${proxy.proxyPort}</span>
+                                </div>
+                                <div class="text-sm ${latencyClass}">
+                                    <i class="fas fa-clock mr-2"></i>
+                                    Latency: <span class="font-medium">${latencyText}</span>
+                                </div>
+                            </div>
+                            
+                            <button class="generate-config-btn w-full px-3 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors config-btn" 
+                                    data-proxy='${JSON.stringify(proxy)}'>
+                                <i class="fas fa-cog mr-2"></i> Generate Config
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            // Add event listeners to generate config buttons
+            document.querySelectorAll('.generate-config-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    selectedProxy = JSON.parse(e.target.dataset.proxy);
+                    document.getElementById('generateConfigModal').classList.remove('hidden');
+                });
+            });
+            
+            // Add animations
+            const cards = proxyContainer.querySelectorAll('.proxy-card');
+            cards.forEach((card, index) => {
+                card.style.animationDelay = `${index * 0.1}s`;
+                card.classList.add('slide-in');
+            });
+        }
+        
+        // Render pagination
+        function renderPagination() {
+            const pagination = document.getElementById('pagination');
+            const totalPages = Math.ceil(filteredProxies.length / pageSize);
+            
+            if (totalPages <= 1) {
+                pagination.innerHTML = '';
+                return;
+            }
+            
+            let paginationHTML = '';
+            
+            // Previous button
+            paginationHTML += `
+                <button class="px-3 py-1 rounded-md ${currentPage === 1 ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-white border border-gray-300 hover:bg-gray-50'}" 
+                        ${currentPage === 1 ? 'disabled' : ''} onclick="changePage(${currentPage - 1})">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+            `;
+            
+            // Page numbers
+            const maxVisiblePages = 5;
+            let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+            let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+            
+            if (endPage - startPage + 1 < maxVisiblePages) {
+                startPage = Math.max(1, endPage - maxVisiblePages + 1);
+            }
+            
+            if (startPage > 1) {
+                paginationHTML += `
+                    <button class="px-3 py-1 rounded-md bg-white border border-gray-300 hover:bg-gray-50" onclick="changePage(1)">1</button>
+                `;
+                if (startPage > 2) {
+                    paginationHTML += `<span class="px-2 text-gray-500">...</span>`;
+                }
+            }
+            
+            for (let i = startPage; i <= endPage; i++) {
+                paginationHTML += `
+                    <button class="px-3 py-1 rounded-md ${i === currentPage ? 'bg-blue-600 text-white' : 'bg-white border border-gray-300 hover:bg-gray-50'}" 
+                            onclick="changePage(${i})">${i}</button>
+                `;
+            }
+            
+            if (endPage < totalPages) {
+                if (endPage < totalPages - 1) {
+                    paginationHTML += `<span class="px-2 text-gray-500">...</span>`;
+                }
+                paginationHTML += `
+                    <button class="px-3 py-1 rounded-md bg-white border border-gray-300 hover:bg-gray-50" onclick="changePage(${totalPages})">${totalPages}</button>
+                `;
+            }
+            
+            // Next button
+            paginationHTML += `
+                <button class="px-3 py-1 rounded-md ${currentPage === totalPages ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-white border border-gray-300 hover:bg-gray-50'}" 
+                        ${currentPage === totalPages ? 'disabled' : ''} onclick="changePage(${currentPage + 1})">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            `;
+            
+            pagination.innerHTML = paginationHTML;
+        }
+        
+        // Change page
+        function changePage(page) {
+            const totalPages = Math.ceil(filteredProxies.length / pageSize);
+            
+            if (page < 1 || page > totalPages) {
+                return;
+            }
+            
+            currentPage = page;
+            renderProxies();
+            renderPagination();
+            
+            // Scroll to top of proxy container
+            document.getElementById('proxyContainer').scrollIntoView({ behavior: 'smooth' });
+        }
+        
+        // Import proxies
+        async function importProxies() {
+            const proxyUrl = document.getElementById('proxyUrlInput').value.trim();
+            const sourceName = document.getElementById('sourceNameInput').value.trim() || 'Manual Import';
+            
+            if (!proxyUrl) {
+                alert('Please enter a URL');
+                return;
+            }
+            
+            try {
+                const response = await fetch(proxyUrl);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch proxy list: ${response.status}`);
+                }
+                
+                const text = await response.text();
+                const proxyStrings = text.split('\n').filter(Boolean);
+                
+                // Create a temporary source for manual import
+                const tempSource = {
+                    id: crypto.randomUUID(),
+                    name: sourceName,
+                    url: proxyUrl,
+                    type: 'txt',
+                    isActive: true,
+                    lastUpdated: new Date().toISOString(),
+                    proxyCount: proxyStrings.length
+                };
+                
+                const newProxies = proxyStrings.map((entry) => {
+                    const [proxyIP, proxyPort, country, org] = entry.split(',');
+                    return {
+                        id: crypto.randomUUID(),
+                        proxyIP: proxyIP || 'Unknown',
+                        proxyPort: proxyPort || 'Unknown',
+                        country: country || 'Unknown',
+                        org: org || 'Unknown Org',
+                        status: 'unknown',
+                        latency: 0,
+                        isActive: true,
+                        addedAt: new Date().toISOString(),
+                        sourceId: tempSource.id
+                    };
+                }).filter(Boolean);
+                
+                if (newProxies.length === 0) {
+                    alert('No valid proxies found in the URL');
+                    return;
+                }
+                
+                // Get current proxies and sources
+                const currentProxies = getProxyBank();
+                const currentSources = getProxyBankSources();
+                
+                // Add the temporary source
+                currentSources.push(tempSource);
+                saveProxyBankSources(currentSources);
+                
+                // Add new proxies
+                const updatedProxies = [...currentProxies, ...newProxies];
+                saveProxyBank(updatedProxies);
+                
+                // Lakukan health check untuk semua proxy baru
+                await checkProxiesHealth(newProxies.map(p => p.id));
+                
+                // Update UI
+                proxies = updatedProxies;
+                applyFilters();
+                renderProxies();
+                renderPagination();
+                
+                // Close modal and reset form
+                document.getElementById('importModal').classList.add('hidden');
+                document.getElementById('proxyUrlInput').value = '';
+                document.getElementById('sourceNameInput').value = '';
+                
+                alert(`Successfully imported ${newProxies.length} proxies from ${sourceName}`);
+            } catch (error) {
+                console.error('Error importing proxies:', error);
+                alert('Failed to import proxies');
+            }
+        }
+        
+        // Check proxy health
+        async function checkProxyHealth(proxy) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/health?proxy=${proxy.proxyIP}:${proxy.proxyPort}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    proxy.status = 'online';
+                    proxy.latency = data.latency_ms;
+                } else {
+                    proxy.status = 'offline';
+                    proxy.latency = 0;
+                }
+            } catch (error) {
+                console.error('Error checking proxy health:', error);
+                proxy.status = 'unknown';
+                proxy.latency = 0;
+            }
+            
+            proxy.lastChecked = new Date().toISOString();
+            
+            return proxy;
+        }
+        
+        // Check all proxies health
+        async function checkAllProxiesHealth() {
+            // Tampilkan loading indicator
+            document.getElementById('loadingIndicator').classList.remove('hidden');
+            document.getElementById('proxyContainer').classList.add('hidden');
+            
+            try {
+                // Gunakan batch health check untuk efisiensi
+                const response = await fetch(`${API_BASE_URL}/health/batch`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ proxies }),
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to check proxies health: ${response.status}`);
+                }
+                
+                const results = await response.json();
+                
+                // Update proxies dengan hasil health check
+                const updatedProxies = proxies.map(proxy => {
+                    const result = results.find(r => 
+                        r.ip === proxy.proxyIP && r.port === proxy.proxyPort
+                    );
+                    
+                    if (result) {
+                        return {
+                            ...proxy,
+                            status: result.status,
+                            latency: result.latency,
+                            lastChecked: new Date().toISOString()
+                        };
+                    }
+                    
+                    return proxy;
+                });
+                
+                proxies = updatedProxies;
+                saveProxyBank(updatedProxies);
+            } catch (error) {
+                console.error('Error in batch health check:', error);
+                // Fallback ke individual health check
+                await Promise.all(proxies.map(proxy => checkProxyHealth(proxy)));
+            } finally {
+                // Sembunyikan loading indicator
+                document.getElementById('loadingIndicator').classList.add('hidden');
+                document.getElementById('proxyContainer').classList.remove('hidden');
+                
+                // Update UI
+                applyFilters();
+                renderProxies();
+                renderPagination();
+            }
+        }
+        
+        // Generate UUID
+        function generateUUID() {
+            const uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                const r = Math.random() * 16 | 0;
+                const v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+            document.getElementById('uuidInput').value = uuid;
+            return uuid;
+        }
+        
+        // Generate configuration
+        async function generateConfiguration() {
+            const workerDomain = document.getElementById('workerDomainSelect').value;
+            const uuid = document.getElementById('uuidInput').value;
+            
+            if (!workerDomain) {
+                alert('Please select a worker domain');
+                return;
+            }
+            
+            if (!selectedProxy) {
+                alert('No proxy selected');
+                return;
+            }
+            
+            try {
+                // Extract domain from worker URL
+                const workerUrl = new URL(workerDomain);
+                const domain = workerUrl.origin;
+                
+                // Generate configuration based on VPN type and port
+                let config = '';
+                
+                if (selectedVpnType === 'trojan') {
+                    const tlsParam = selectedPort === '443' ? 'tls' : 'none';
+                    config = `trojan://${uuid}@${domain}:${selectedPort}?path=/${selectedProxy.proxyIP}:${selectedProxy.proxyPort}&type=ws&host=${domain}&encryption=none&security=${tlsParam}#Trojan-${selectedProxy.country}`;
+                } else if (selectedVpnType === 'vless') {
+                    const tlsParam = selectedPort === '443' ? 'tls' : 'none';
+                    config = `vless://${uuid}@${domain}:${selectedPort}?path=/${selectedProxy.proxyIP}:${selectedProxy.proxyPort}&type=ws&host=${domain}&encryption=none&security=${tlsParam}#VLESS-${selectedProxy.country}`;
+                } else if (selectedVpnType === 'ss') {
+                    // For Shadowsocks, we need to encode the password
+                    const password = `chacha20-ietf-poly1305:${uuid}`;
+                    const encodedPassword = btoa(password);
+                    const tlsParam = selectedPort === '443' ? ';tls' : '';
+                    config = `ss://${encodedPassword}@${domain}:${selectedPort}?plugin=v2ray-plugin${tlsParam};mux=0;mode=websocket;path=/${selectedProxy.proxyIP}:${selectedProxy.proxyPort};host=${domain}#SS-${selectedProxy.country}`;
+                }
+                
+                // Jika format yang dipilih adalah Clash atau Singbox, gunakan API converter
+                if (selectedFormat === 'clash' || selectedFormat === 'singbox') {
+                    try {
+                        const convertResponse = await fetch(`${API_BASE_URL}/convert/${selectedFormat}`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                links: [config],
+                                level: 'standard'
+                            }),
+                        });
+                        
+                        if (!convertResponse.ok) {
+                            throw new Error(`Failed to convert configuration: ${convertResponse.status}`);
+                        }
+                        
+                        config = await convertResponse.text();
+                    } catch (convertError) {
+                        console.error('Error converting configuration:', convertError);
+                        alert('Failed to convert configuration. Using URI format instead.');
+                    }
+                }
+                
+                // Generate QR code if requested
+                let qrcode = '';
+                if (selectedFormat === 'qrcode') {
+                    qrcode = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(config)}`;
+                }
+                
+                // Close generate config modal
+                document.getElementById('generateConfigModal').classList.add('hidden');
+                
+                // Show result modal
+                document.getElementById('resultModal').classList.remove('hidden');
+                
+                // Display result based on format
+                const resultContent = document.getElementById('resultContent');
+                if (selectedFormat === 'qrcode') {
+                    resultContent.innerHTML = `<div class="text-center"><img src="${qrcode}" alt="QR Code" class="mx-auto"></div>`;
+                } else {
+                    resultContent.innerHTML = `<pre class="bg-gray-100 p-4 rounded-md overflow-x-auto text-sm">${config}</pre>`;
+                }
+            } catch (error) {
+                console.error('Error generating configuration:', error);
+                alert('Failed to generate configuration');
+            }
+        }
+        
+        // Copy result to clipboard
+        function copyResult() {
+            const configText = document.querySelector('#resultContent pre')?.textContent;
+            if (!configText) {
+                alert('No configuration to copy');
+                return;
+            }
+            
+            navigator.clipboard.writeText(configText)
+                .then(() => {
+                    const copyBtn = document.getElementById('copyResultBtn');
+                    const originalText = copyBtn.innerHTML;
+                    copyBtn.innerHTML = '<i class="fas fa-check mr-2"></i> Copied!';
+                    setTimeout(() => {
+                        copyBtn.innerHTML = originalText;
+                    }, 2000);
+                })
+                .catch(err => {
+                    console.error('Failed to copy:', err);
+                    alert('Failed to copy to clipboard');
+                });
+        }
+        
+        // Update last update time
+        function updateLastUpdateTime() {
+            // Simulate real-time updates
+            const cards = document.querySelectorAll('.proxy-card');
+            cards.forEach(card => {
+                const latencyElement = card.querySelector('.latency-low, .latency-medium, .latency-high');
+                if (latencyElement && Math.random() > 0.8) {
+                    const newLatency = Math.floor(Math.random() * 150) + 20;
+                    const latencyText = newLatency + 'ms';
+                    latencyElement.innerHTML = `<i class="fas fa-clock mr-2"></i>Latency: <span class="font-medium">${latencyText}</span>`;
+                    
+                    // Update color
+                    latencyElement.classList.remove('latency-low', 'latency-medium', 'latency-high');
+                    if (newLatency < 70) {
+                        latencyElement.classList.add('latency-low');
+                    } else if (newLatency < 100) {
+                        latencyElement.classList.add('latency-medium');
+                    } else {
+                        latencyElement.classList.add('latency-high');
+                    }
+                }
+            });
+        }
+        
+        // Get country name from code
+        function getCountryName(code) {
+            const countries = {
+                'US': 'United States',
+                'SG': 'Singapore',
+                'JP': 'Japan',
+                'DE': 'Germany',
+                'FR': 'France'
+            };
+            return countries[code] || code;
+        }
+        
+        // Get proxy bank from localStorage
+        function getProxyBank() {
+            const saved = localStorage.getItem('proxyBank');
+            return saved ? JSON.parse(saved) : [];
+        }
+        
+        // Save proxy bank to localStorage
+        function saveProxyBank(proxies) {
+            localStorage.setItem('proxyBank', JSON.stringify(proxies));
+        }
+        
+        // Get proxy bank sources from localStorage
+        function getProxyBankSources() {
+            const saved = localStorage.getItem('proxyBankSources');
+            return saved ? JSON.parse(saved) : [];
+        }
+        
+        // Save proxy bank sources to localStorage
+        function saveProxyBankSources(sources) {
+            localStorage.setItem('proxyBankSources', JSON.stringify(sources));
+        }
+        
+        // Make functions global for onclick handlers
+        window.editTunnel = editTunnel;
+        window.confirmDeleteTunnel = confirmDeleteTunnel;
+        window.changePage = changePage;
+        
+        // Simulate real-time updates
+        setInterval(() => {
+            updateLastUpdateTime();
+        }, 10000); // Update every 10 seconds
+    </script>
+</body>
+</html>
