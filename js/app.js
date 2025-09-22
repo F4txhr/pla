@@ -2,28 +2,21 @@
 // Shared Application Logic
 // =================================================================================
 
-// --- Global State & Config ---
-let tunnels = [];
-let editingTunnelId = null;
-const HEALTH_CHECK_INTERVAL = 30 * 60 * 1000; // 30 minutes
-
-// --- App Initialization ---
 document.addEventListener('DOMContentLoaded', () => {
     setupCommonEventListeners();
 
+    // The tunnel management UI only exists on some pages.
     if (document.getElementById('tunnelDropdownBtn')) {
         setupTunnelManagement();
     }
-
-    // Start the background health check timer
-    setTimeout(checkAllProxiesHealth, 2000); // Initial check after 2s
-    setInterval(checkAllProxiesHealth, HEALTH_CHECK_INTERVAL);
 });
 
-
-// --- Common Event Listeners ---
+/**
+ * Sets up common event listeners for elements present on all pages,
+ * such as menus and the theme toggle.
+ */
 function setupCommonEventListeners() {
-    // Mobile menu
+    // Mobile menu toggle
     const mobileMenuBtn = document.getElementById('mobileMenuBtn');
     const mobileMenu = document.getElementById('mobileMenu');
     const closeMobileMenu = document.getElementById('closeMobileMenu');
@@ -33,13 +26,13 @@ function setupCommonEventListeners() {
         closeMobileMenu.addEventListener('click', () => mobileMenu.classList.remove('active'));
     }
 
-    // User menu
+    // User menu dropdown
     const userMenuBtn = document.getElementById('userMenuBtn');
     const userMenu = document.getElementById('userMenu');
 
     if (userMenuBtn && userMenu) {
         userMenuBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
+            e.stopPropagation(); // Prevent the global click listener from closing it immediately
             userMenu.classList.toggle('hidden');
         });
     }
@@ -47,10 +40,12 @@ function setupCommonEventListeners() {
     // Theme toggle
     const themeToggle = document.getElementById('themeToggle');
     if (themeToggle) {
+        // Apply saved theme on initial load
         if (localStorage.getItem('theme') === 'dark') {
             document.body.classList.add('dark');
             themeToggle.querySelector('i').classList.replace('fa-moon', 'fa-sun');
         }
+        // Add click listener to toggle theme
         themeToggle.addEventListener('click', () => {
             document.body.classList.toggle('dark');
             const isDarkMode = document.body.classList.contains('dark');
@@ -59,7 +54,7 @@ function setupCommonEventListeners() {
         });
     }
 
-    // Global click listener to close menus
+    // Global click listener to close dropdowns when clicking outside
     document.addEventListener('click', (e) => {
         if (userMenu && !userMenu.classList.contains('hidden') && !userMenuBtn.contains(e.target)) {
             userMenu.classList.add('hidden');
@@ -73,68 +68,25 @@ function setupCommonEventListeners() {
 }
 
 
-// --- Centralized Health Check Logic ---
+// =================================================================================
+// Tunnel Management Logic (Used on Proxy and Subscription pages)
+// =================================================================================
 
-async function checkAllProxiesHealth() {
-    console.log(`[${new Date().toLocaleTimeString()}] Starting background health check for all proxies.`);
-    let proxies = JSON.parse(localStorage.getItem('proxyBank') || '[]');
-    if (proxies.length === 0) return;
-
-    const batchSize = 50;
-    for (let i = 0; i < proxies.length; i += batchSize) {
-        const batch = proxies.slice(i, i + batchSize);
-        await processHealthCheckBatch(batch, proxies);
-    }
-
-    localStorage.setItem('proxyBank', JSON.stringify(proxies));
-    console.log(`[${new Date().toLocaleTimeString()}] Background health check complete.`);
-
-    // Dispatch a custom event to notify other pages of the update
-    window.dispatchEvent(new CustomEvent('proxiesUpdated'));
-}
-
-async function processHealthCheckBatch(batch, allProxies) {
-    const healthChecks = batch.map(proxy => {
-        const url = `${API_BASE_URL}/health?proxy=${proxy.proxyIP}:${proxy.proxyPort}`;
-        return fetch(url)
-            .then(res => {
-                if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-                return res.json();
-            })
-            .catch(err => ({
-                success: false,
-                proxy: `${proxy.proxyIP}:${proxy.proxyPort}`,
-                status: 'DOWN',
-                latency_ms: 0,
-                error: err.message
-            }));
-    });
-
-    const results = await Promise.all(healthChecks);
-
-    results.forEach(result => {
-        const proxyToUpdate = allProxies.find(p => `${p.proxyIP}:${p.proxyPort}` === result.proxy);
-        if (proxyToUpdate) {
-            proxyToUpdate.status = result.success ? 'online' : 'offline';
-            proxyToUpdate.latency = result.latency_ms || 0;
-            proxyToUpdate.lastChecked = new Date().toISOString();
-        }
-    });
-}
-
-
-// --- Tunnel Management Logic ---
+let tunnels = [];
+let editingTunnelId = null;
 
 function setupTunnelManagement() {
-    const savedTunnels = localStorage.getItem('tunnelServices');
-    tunnels = savedTunnels ? JSON.parse(savedTunnels) : [];
+    // Load tunnels from localStorage (tunnels are not part of the KV store for now)
+    tunnels = JSON.parse(localStorage.getItem('tunnelServices') || '[]');
 
     const tunnelDropdownBtn = document.getElementById('tunnelDropdownBtn');
     const tunnelDropdown = document.getElementById('tunnelDropdown');
-    tunnelDropdownBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        tunnelDropdown.classList.toggle('hidden');
-    });
+    if(tunnelDropdownBtn) {
+        tunnelDropdownBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            tunnelDropdown.classList.toggle('hidden');
+        });
+    }
 
     document.getElementById('addTunnelBtn').addEventListener('click', openAddTunnelModal);
     document.getElementById('tunnelForm').addEventListener('submit', saveTunnel);
@@ -153,17 +105,17 @@ function renderTunnelList() {
     tunnelEmptyState.classList.toggle('hidden', tunnels.length > 0);
     tunnelList.innerHTML = tunnels.map(tunnel => {
         const statusClass = tunnel.status === 'online' ? 'text-green-600' : 'text-red-600';
-        const statusIcon = tunnel.status === 'online' ? 'check-circle' : 'times-circle';
+        const statusIcon = tunnel.status === 'online' ? 'fa-check-circle' : 'fa-times-circle';
         return `
-            <div class="tunnel-item p-3">
-                <div class="flex justify-between items-start">
+            <div class="tunnel-item p-3 hover:bg-gray-50 dark:hover:bg-gray-700">
+                <div class="flex justify-between items-center">
                     <div class="flex-1">
                         <h4 class="font-medium text-gray-900">${tunnel.name}</h4>
                         <p class="text-sm text-gray-600">${tunnel.domain}</p>
                     </div>
                     <div class="flex items-center space-x-2 ml-2">
                         <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusClass}">
-                            <i class="fas fa-${statusIcon} mr-1"></i>
+                            <i class="fas ${statusIcon} mr-1"></i>
                             ${tunnel.status || 'unknown'}
                         </span>
                         <button onclick="editTunnel('${tunnel.id}')" class="p-1 text-gray-500 hover:text-blue-600"><i class="fas fa-edit"></i></button>
@@ -198,8 +150,8 @@ function saveTunnel(e) {
     localStorage.setItem('tunnelServices', JSON.stringify(tunnels));
     renderTunnelList();
 
-    if (typeof populateSelects === 'function') populateSelects();
-    if (typeof updateWorkerDomainOptions === 'function') updateWorkerDomainOptions();
+    // Notify other parts of the app that tunnels might have changed
+    window.dispatchEvent(new CustomEvent('tunnelsUpdated', { detail: { tunnels } }));
 
     document.getElementById('tunnelModal').classList.add('hidden');
     if (!editingTunnelId) checkSingleTunnelStatus(tunnels[tunnels.length - 1]);
@@ -224,13 +176,16 @@ function deleteTunnel(tunnelId) {
     tunnels = tunnels.filter(t => t.id !== tunnelId);
     localStorage.setItem('tunnelServices', JSON.stringify(tunnels));
     renderTunnelList();
-    if (typeof populateSelects === 'function') populateSelects();
-    if (typeof updateWorkerDomainOptions === 'function') updateWorkerDomainOptions();
+    window.dispatchEvent(new CustomEvent('tunnelsUpdated', { detail: { tunnels } }));
 }
 
 async function checkSingleTunnelStatus(tunnel) {
     try {
-        const response = await fetch(`https://${tunnel.domain}`);
+        // Use fetch with a timeout to prevent long hangs
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5-second timeout
+        const response = await fetch(`https://${tunnel.domain}`, { signal: controller.signal });
+        clearTimeout(timeoutId);
         tunnel.status = response.ok ? 'online' : 'offline';
     } catch (error) {
         tunnel.status = 'offline';
@@ -239,5 +194,6 @@ async function checkSingleTunnelStatus(tunnel) {
     renderTunnelList();
 }
 
+// Expose functions to be called from HTML onclick attributes
 window.editTunnel = editTunnel;
 window.confirmDeleteTunnel = confirmDeleteTunnel;

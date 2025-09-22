@@ -3,87 +3,65 @@
 // =================================================================================
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Initial load of data
-    loadDashboardData();
+    // Initial load of stats
     updateStats();
 
-    // Setup dashboard-specific event listeners
-    document.getElementById('refreshDataBtn').addEventListener('click', () => {
-        updateStats();
-        loadDashboardData();
-    });
-
-    // Simulate real-time updates
-    setInterval(updateStats, 30000); // Update every 30 seconds
+    // Set an interval to refresh the stats periodically
+    setInterval(updateStats, 30000); // Refresh every 30 seconds
 });
 
 /**
- * Loads and displays recent activity from localStorage.
+ * Fetches the latest proxy data from the API and updates the dashboard statistic cards.
  */
-function loadDashboardData() {
-    const recentActivity = localStorage.getItem('recentActivity');
-    const activityContainer = document.getElementById('recentActivity');
-    const noActivityDiv = document.getElementById('noActivity');
-
-    if (recentActivity) {
-        const activities = JSON.parse(recentActivity);
-        if (activities.length > 0) {
-            noActivityDiv.classList.add('hidden');
-            activityContainer.innerHTML = activities.slice(0, 5).map(activity => `
-                <div class="flex items-start">
-                    <div class="flex-shrink-0">
-                        <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                            <i class="fas ${activity.icon} text-blue-600 text-sm"></i>
-                        </div>
-                    </div>
-                    <div class="ml-3">
-                        <p class="text-sm font-medium text-gray-900">${activity.title}</p>
-                        <p class="text-sm text-gray-500">${activity.description}</p>
-                        <p class="text-xs text-gray-400">${new Date(activity.timestamp).toLocaleString()}</p>
-                    </div>
-                </div>
-            `).join('');
-        } else {
-            activityContainer.innerHTML = '';
-            noActivityDiv.classList.remove('hidden');
+async function updateStats() {
+    try {
+        const response = await fetch('/api/proxies');
+        if (!response.ok) {
+            throw new Error(`API returned status ${response.status}`);
         }
-    } else {
-        activityContainer.innerHTML = '';
-        noActivityDiv.classList.remove('hidden');
+        const proxies = await response.json();
+
+        // Use the same 10-minute cache duration as defined in config.js
+        // A more advanced setup might share this constant, but for now this is fine.
+        const CACHE_DURATION_MS = 10 * 60 * 1000;
+        const now = Date.now();
+
+        const onlineProxiesCount = proxies.filter(p =>
+            p.status === 'online' &&
+            p.lastChecked &&
+            (now - new Date(p.lastChecked).getTime()) < CACHE_DURATION_MS
+        ).length;
+
+        // Tunnel and account data are still managed in localStorage for simplicity
+        const tunnels = JSON.parse(localStorage.getItem('tunnelServices') || '[]');
+        const activeTunnelsCount = tunnels.filter(t => t.status === 'online').length;
+
+        const accounts = JSON.parse(localStorage.getItem('vpnAccounts') || '[]');
+        const totalAccountsCount = accounts.length;
+
+        // Update the UI with smooth animations
+        animateValue('totalProxies', proxies.length);
+        animateValue('onlineProxies', onlineProxiesCount);
+        animateValue('activeTunnels', activeTunnelsCount);
+        animateValue('totalAccounts', totalAccountsCount);
+
+    } catch (error) {
+        console.error('Failed to update dashboard stats:', error);
+        // You could add a UI indicator here to show that stats are stale
     }
 }
 
 /**
- * Updates the statistics cards on the dashboard.
- */
-function updateStats() {
-    // Get data from localStorage
-    const proxies = JSON.parse(localStorage.getItem('proxyBank') || '[]');
-    const onlineProxies = proxies.filter(p => p.status === 'online').length;
-
-    const tunnels = JSON.parse(localStorage.getItem('tunnelServices') || '[]');
-    const activeTunnels = tunnels.filter(t => t.status === 'online').length;
-
-    const accounts = JSON.parse(localStorage.getItem('vpnAccounts') || '[]');
-
-    // Update UI with animation
-    animateValue('totalProxies', proxies.length);
-    animateValue('onlineProxies', onlineProxies);
-    animateValue('activeTunnels', activeTunnels);
-    animateValue('totalAccounts', accounts.length);
-}
-
-/**
- * Animates a numerical value change in an element.
- * @param {string} elementId - The ID of the element to update.
- * @param {number} endValue - The target value.
+ * Animates a numerical value change in an HTML element.
+ * @param {string} elementId - The ID of the element whose text content will be animated.
+ * @param {number} endValue - The final numerical value.
  */
 function animateValue(elementId, endValue) {
     const element = document.getElementById(elementId);
     if (!element) return;
 
     const startValue = parseInt(element.textContent) || 0;
-    const duration = 1000;
+    const duration = 1000; // Animation duration in milliseconds
     const startTime = performance.now();
 
     function update(currentTime) {
@@ -99,38 +77,4 @@ function animateValue(elementId, endValue) {
     }
 
     requestAnimationFrame(update);
-}
-
-/**
- * Adds an activity log entry to localStorage.
- * @param {string} type - The type of activity (e.g., 'proxy', 'account').
- * @param {string} title - The title of the activity.
- * @param {string} description - The description of the activity.
- */
-function addActivity(type, title, description) {
-    const activities = JSON.parse(localStorage.getItem('recentActivity') || '[]');
-
-    const icons = {
-        'proxy': 'fa-server',
-        'tunnel': 'fa-network-wired',
-        'account': 'fa-user',
-        'config': 'fa-file-export'
-    };
-
-    const newActivity = {
-        type,
-        title,
-        description,
-        icon: icons[type] || 'fa-info-circle',
-        timestamp: new Date().toISOString()
-    };
-
-    activities.unshift(newActivity);
-
-    // Keep only the last 20 activities
-    if (activities.length > 20) {
-        activities.splice(20);
-    }
-
-    localStorage.setItem('recentActivity', JSON.stringify(activities));
 }

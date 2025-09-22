@@ -1,26 +1,21 @@
 // =================================================================================
 // Accounts Page Logic
+// This page uses localStorage as it's not tied to the proxy status KV store.
 // =================================================================================
 
-// Global variables for the accounts page
 let accounts = [];
 let editingAccountId = null;
 
 document.addEventListener('DOMContentLoaded', () => {
-    setupAccountEventListeners();
+    // Note: The shared app.js handles setup of common listeners like menus
     loadAccounts();
     renderAccounts();
+    setupAccountEventListeners();
 });
 
-/**
- * Sets up event listeners specific to the accounts page.
- */
 function setupAccountEventListeners() {
-    // Modal triggers
     document.getElementById('addAccountBtn').addEventListener('click', openAddModal);
     document.getElementById('emptyStateAddBtn').addEventListener('click', openAddModal);
-
-    // Modal controls
     document.getElementById('cancelBtn').addEventListener('click', closeAccountModal);
     document.getElementById('accountForm').addEventListener('submit', saveAccount);
     document.getElementById('generateUuidBtn').addEventListener('click', () => {
@@ -28,38 +23,22 @@ function setupAccountEventListeners() {
     });
 }
 
-/**
- * Loads accounts from localStorage.
- */
 function loadAccounts() {
-    const savedAccounts = localStorage.getItem('vpnAccounts');
-    accounts = savedAccounts ? JSON.parse(savedAccounts) : [];
+    accounts = JSON.parse(localStorage.getItem('vpnAccounts') || '[]');
 }
 
-/**
- * Saves the current accounts array to localStorage.
- */
 function saveAccounts() {
     localStorage.setItem('vpnAccounts', JSON.stringify(accounts));
 }
 
-/**
- * Renders the accounts data into the table.
- */
 function renderAccounts() {
     const tableBody = document.getElementById('accountsTableBody');
     const emptyState = document.getElementById('emptyState');
+    emptyState.classList.toggle('hidden', accounts.length > 0);
 
-    if (accounts.length === 0) {
-        tableBody.innerHTML = '';
-        emptyState.classList.remove('hidden');
-        return;
-    }
-
-    emptyState.classList.add('hidden');
     tableBody.innerHTML = accounts.map(account => `
-        <tr class="bg-white border-b hover:bg-gray-50">
-            <td class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">${account.username}</td>
+        <tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+            <td class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">${account.username}</td>
             <td class="px-6 py-4">
                 <div class="flex items-center">
                     <span class="truncate w-48">${account.uuid}</span>
@@ -70,8 +49,8 @@ function renderAccounts() {
             </td>
             <td class="px-6 py-4">${new Date(account.createdAt).toLocaleDateString()}</td>
             <td class="px-6 py-4">
-                <button onclick="openEditModal('${account.id}')" class="font-medium text-blue-600 hover:underline mr-4">Edit</button>
-                <button onclick="confirmDeleteAccount('${account.id}')" class="font-medium text-red-600 hover:underline">Delete</button>
+                <button onclick="openEditModal('${account.id}')" class="font-medium text-blue-600 dark:text-blue-500 hover:underline mr-4">Edit</button>
+                <button onclick="confirmDeleteAccount('${account.id}')" class="font-medium text-red-600 dark:text-red-500 hover:underline">Delete</button>
             </td>
         </tr>
     `).join('');
@@ -88,7 +67,6 @@ function openAddModal() {
 function openEditModal(id) {
     const account = accounts.find(acc => acc.id === id);
     if (!account) return;
-
     editingAccountId = id;
     document.getElementById('accountModalTitle').textContent = 'Edit Account';
     document.getElementById('accountId').value = account.id;
@@ -101,14 +79,10 @@ function closeAccountModal() {
     document.getElementById('accountModal').classList.add('hidden');
 }
 
-/**
- * Saves a new or edited account.
- */
 function saveAccount(e) {
     e.preventDefault();
     const username = document.getElementById('username').value;
     const uuid = document.getElementById('uuid').value;
-
     if (editingAccountId) {
         const index = accounts.findIndex(acc => acc.id === editingAccountId);
         if (index !== -1) {
@@ -123,7 +97,6 @@ function saveAccount(e) {
             createdAt: new Date().toISOString()
         });
     }
-
     saveAccounts();
     renderAccounts();
     closeAccountModal();
@@ -144,17 +117,18 @@ function deleteAccount(id) {
 function copyToClipboard(text, button) {
     navigator.clipboard.writeText(text).then(() => {
         const icon = button.querySelector('i');
-        icon.classList.replace('fa-copy', 'fa-check');
+        const originalIcon = 'fa-copy';
+        const successIcon = 'fa-check';
+        icon.classList.replace(originalIcon, successIcon);
         setTimeout(() => {
-            icon.classList.replace('fa-check', 'fa-copy');
+            icon.classList.replace(successIcon, originalIcon);
         }, 1500);
     }).catch(err => {
         console.error('Could not copy text: ', err);
-        alert('Failed to copy text.');
     });
 }
 
-// Make functions globally accessible for onclick handlers
+// Expose functions to be called from HTML onclick attributes
 window.openEditModal = openEditModal;
 window.confirmDeleteAccount = confirmDeleteAccount;
 window.copyToClipboard = copyToClipboard;
