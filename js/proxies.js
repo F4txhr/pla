@@ -2,7 +2,7 @@
 // Proxies Page Logic
 // =================================================================================
 
-// Global variables for the proxies page
+// --- Page State ---
 let proxies = [];
 let filteredProxies = [];
 let currentPage = 1;
@@ -12,46 +12,27 @@ let selectedVpnType = 'trojan';
 let selectedPort = '443';
 let selectedFormat = 'uri';
 
+// --- DOMContentLoaded Listener ---
 document.addEventListener('DOMContentLoaded', () => {
-    initializeProxyData();
+    initializeProxyPage();
     setupProxyEventListeners();
-    renderProxies();
-    renderPagination();
 });
 
-/**
- * Initializes proxy data from localStorage.
- */
-function initializeProxyData() {
+
+// --- Initialization ---
+
+function initializeProxyPage() {
     const savedProxies = localStorage.getItem('proxyBank');
     proxies = savedProxies ? JSON.parse(savedProxies) : [];
 
-    // The tunnel data is loaded by the shared app.js, but we need to populate the dropdown
     updateWorkerDomainOptions();
+    populateCountryFilter();
+    applyFiltersAndRender();
 
-    applyFilters();
+    // Check health of visible proxies for a fast initial load
+    checkVisibleProxiesHealth();
 }
 
-/**
- * Updates the options in the worker domain select dropdown.
- */
-function updateWorkerDomainOptions() {
-    const workerDomainSelect = document.getElementById('workerDomainSelect');
-    if (!workerDomainSelect) return;
-
-    // 'tunnels' is a global from app.js
-    workerDomainSelect.innerHTML = '<option value="">Select a worker domain</option>';
-    tunnels.forEach(tunnel => {
-        const option = document.createElement('option');
-        option.value = `https://${tunnel.domain}`;
-        option.textContent = `${tunnel.name} (${tunnel.domain})`;
-        workerDomainSelect.appendChild(option);
-    });
-}
-
-/**
- * Sets up event listeners specific to the proxies page.
- */
 function setupProxyEventListeners() {
     // FAB menu
     const fabBtn = document.getElementById('fabBtn');
@@ -67,90 +48,35 @@ function setupProxyEventListeners() {
     });
 
     // Import modal
-    document.getElementById('importBtn').addEventListener('click', openImportModal);
-    document.getElementById('emptyStateImportBtn').addEventListener('click', openImportModal);
-    document.getElementById('cancelImportBtn').addEventListener('click', closeImportModal);
+    document.getElementById('importBtn').addEventListener('click', () => document.getElementById('importModal').classList.remove('hidden'));
+    document.getElementById('emptyStateImportBtn').addEventListener('click', () => document.getElementById('importModal').classList.remove('hidden'));
+    document.getElementById('cancelImportBtn').addEventListener('click', () => document.getElementById('importModal').classList.add('hidden'));
     document.getElementById('confirmImportBtn').addEventListener('click', importProxies);
 
-    // Refresh button
-    document.getElementById('refreshBtn').addEventListener('click', checkAllProxiesHealth);
+    // Main refresh button
+    document.getElementById('refreshBtn').addEventListener('click', () => checkAllProxiesHealth(true));
 
     // Filters and pagination
-    document.getElementById('countryFilter').addEventListener('change', handleFilterChange);
-    document.getElementById('statusFilter').addEventListener('change', handleFilterChange);
+    document.getElementById('countryFilter').addEventListener('change', applyFiltersAndRender);
+    document.getElementById('statusFilter').addEventListener('change', applyFiltersAndRender);
     document.getElementById('pageSize').addEventListener('change', (e) => {
         pageSize = parseInt(e.target.value);
-        currentPage = 1;
-        renderProxies();
-        renderPagination();
+        applyFiltersAndRender();
     });
 
-    // Generate Config Modal
     setupGenerateConfigModalListeners();
 }
 
-function openImportModal() {
-    document.getElementById('importModal').classList.remove('hidden');
-}
 
-function closeImportModal() {
-    document.getElementById('importModal').classList.add('hidden');
-    // document.getElementById('proxyUrlInput').value = ''; // Keep the default value
-    document.getElementById('sourceNameInput').value = '';
-}
+// --- UI Rendering & Filtering ---
 
-function handleFilterChange() {
-    currentPage = 1;
+function applyFiltersAndRender() {
     applyFilters();
+    currentPage = 1;
     renderProxies();
     renderPagination();
 }
 
-/**
- * Sets up event listeners for the generate config modal.
- */
-function setupGenerateConfigModalListeners() {
-    // Button clicks
-    document.querySelectorAll('.vpn-type-btn').forEach(btn => btn.addEventListener('click', selectVpnType));
-    document.querySelectorAll('.port-btn').forEach(btn => btn.addEventListener('click', selectPort));
-    document.querySelectorAll('.format-btn').forEach(btn => btn.addEventListener('click', selectFormat));
-
-    // Actions
-    document.getElementById('generateUuidBtn').addEventListener('click', generateUUID);
-    document.getElementById('cancelGenerateBtn').addEventListener('click', () => document.getElementById('generateConfigModal').classList.add('hidden'));
-    document.getElementById('confirmGenerateBtn').addEventListener('click', generateConfiguration);
-
-    // Result modal
-    document.getElementById('closeResultBtn').addEventListener('click', () => document.getElementById('resultModal').classList.add('hidden'));
-    document.getElementById('copyResultBtn').addEventListener('click', copyResult);
-
-    // Set defaults
-    document.querySelector('.vpn-type-btn[data-type="trojan"]').classList.add('bg-blue-600', 'text-white');
-    document.querySelector('.port-btn[data-port="443"]').classList.add('bg-blue-600', 'text-white');
-    document.querySelector('.format-btn[data-format="uri"]').classList.add('bg-blue-600', 'text-white');
-}
-
-function selectVpnType(e) {
-    document.querySelectorAll('.vpn-type-btn').forEach(b => b.classList.remove('bg-blue-600', 'text-white'));
-    e.target.classList.add('bg-blue-600', 'text-white');
-    selectedVpnType = e.target.dataset.type;
-}
-
-function selectPort(e) {
-    document.querySelectorAll('.port-btn').forEach(b => b.classList.remove('bg-blue-600', 'text-white'));
-    e.target.classList.add('bg-blue-600', 'text-white');
-    selectedPort = e.target.dataset.port;
-}
-
-function selectFormat(e) {
-    document.querySelectorAll('.format-btn').forEach(b => b.classList.remove('bg-blue-600', 'text-white'));
-    e.target.classList.add('bg-blue-600', 'text-white');
-    selectedFormat = e.target.dataset.format;
-}
-
-/**
- * Applies filters to the main proxy list.
- */
 function applyFilters() {
     const countryFilter = document.getElementById('countryFilter').value;
     const statusFilter = document.getElementById('statusFilter').value;
@@ -166,9 +92,23 @@ function applyFilters() {
     document.getElementById('totalProxies').textContent = filteredProxies.length;
 }
 
-/**
- * Renders the proxy cards to the page.
- */
+function populateCountryFilter() {
+    const countryFilter = document.getElementById('countryFilter');
+    const uniqueCountries = [...new Set(proxies.map(p => p.country).filter(Boolean))].sort();
+
+    // Clear existing options except the first one
+    while (countryFilter.options.length > 1) {
+        countryFilter.remove(1);
+    }
+
+    uniqueCountries.forEach(code => {
+        const option = document.createElement('option');
+        option.value = code;
+        option.textContent = `${getFlagEmoji(code)} ${getCountryName(code)}`;
+        countryFilter.appendChild(option);
+    });
+}
+
 function renderProxies() {
     const proxyContainer = document.getElementById('proxyContainer');
     const emptyState = document.getElementById('emptyState');
@@ -191,7 +131,7 @@ function renderProxies() {
     document.getElementById('showingTo').textContent = endIndex;
 
     proxyContainer.innerHTML = paginatedProxies.map(proxy => {
-        const latencyClass = proxy.latency < 70 ? 'latency-low' : proxy.latency < 150 ? 'latency-medium' : 'latency-high';
+        const latencyClass = proxy.latency < 150 ? 'latency-low' : proxy.latency < 500 ? 'latency-medium' : 'latency-high';
         const latencyText = proxy.status === 'offline' ? '-' : `${proxy.latency}ms`;
 
         return `
@@ -218,7 +158,7 @@ function renderProxies() {
                         <div class="text-sm ${latencyClass}"><i class="fas fa-clock mr-2"></i>Latency: <span class="font-medium">${latencyText}</span></div>
                     </div>
                     <button class="generate-config-btn w-full px-3 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
-                            data-proxy='${JSON.stringify(proxy)}'>
+                            data-proxy-id='${proxy.id}'>
                         <i class="fas fa-cog mr-2"></i> Generate Config
                     </button>
                 </div>
@@ -228,17 +168,13 @@ function renderProxies() {
 
     document.querySelectorAll('.generate-config-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
-            selectedProxy = JSON.parse(e.currentTarget.dataset.proxy);
+            selectedProxy = proxies.find(p => p.id === e.currentTarget.dataset.proxyId);
             document.getElementById('generateConfigModal').classList.remove('hidden');
-            generateUUID(); // pre-fill a new UUID
+            generateUUID();
         });
     });
 }
 
-/**
- * Renders pagination controls.
- * This version only shows a limited number of page buttons.
- */
 function renderPagination() {
     const pagination = document.getElementById('pagination');
     const totalPages = Math.ceil(filteredProxies.length / pageSize);
@@ -251,51 +187,31 @@ function renderPagination() {
     let paginationHTML = '';
     const maxVisiblePages = 5;
 
-    // Previous button
     paginationHTML += `<button class="px-3 py-1 rounded-md ${currentPage === 1 ? 'bg-gray-200 cursor-not-allowed' : 'bg-white border'}" ${currentPage === 1 ? 'disabled' : ''} onclick="changePage(${currentPage - 1})"><i class="fas fa-chevron-left"></i></button>`;
 
-    if (totalPages <= maxVisiblePages + 2) {
-        // Show all pages if there aren't too many
-        for (let i = 1; i <= totalPages; i++) {
-            paginationHTML += `<button class="px-3 py-1 rounded-md ${i === currentPage ? 'bg-blue-600 text-white' : 'bg-white border'}" onclick="changePage(${i})">${i}</button>`;
-        }
-    } else {
-        // Show smart pagination with ellipsis
-        let startPage = Math.max(1, currentPage - 2);
-        let endPage = Math.min(totalPages, currentPage + 2);
+    if (totalPages > maxVisiblePages + 2) {
+        let startPage = Math.max(2, currentPage - 2);
+        let endPage = Math.min(totalPages - 1, currentPage + 2);
 
-        if (currentPage < 4) {
-            endPage = maxVisiblePages;
-        }
-        if (currentPage > totalPages - 3) {
-            startPage = totalPages - maxVisiblePages + 1;
-        }
-
-        if (startPage > 1) {
-            paginationHTML += `<button class="px-3 py-1 rounded-md bg-white border" onclick="changePage(1)">1</button>`;
-            if (startPage > 2) {
-                paginationHTML += `<span class="px-3 py-1">...</span>`;
-            }
-        }
+        paginationHTML += `<button class="px-3 py-1 rounded-md ${1 === currentPage ? 'bg-blue-600 text-white' : 'bg-white border'}" onclick="changePage(1)">1</button>`;
+        if (startPage > 2) paginationHTML += `<span class="px-3 py-1">...</span>`;
 
         for (let i = startPage; i <= endPage; i++) {
             paginationHTML += `<button class="px-3 py-1 rounded-md ${i === currentPage ? 'bg-blue-600 text-white' : 'bg-white border'}" onclick="changePage(${i})">${i}</button>`;
         }
 
-        if (endPage < totalPages) {
-            if (endPage < totalPages - 1) {
-                paginationHTML += `<span class="px-3 py-1">...</span>`;
-            }
-            paginationHTML += `<button class="px-3 py-1 rounded-md bg-white border" onclick="changePage(${totalPages})">${totalPages}</button>`;
+        if (endPage < totalPages - 1) paginationHTML += `<span class="px-3 py-1">...</span>`;
+        paginationHTML += `<button class="px-3 py-1 rounded-md ${totalPages === currentPage ? 'bg-blue-600 text-white' : 'bg-white border'}" onclick="changePage(${totalPages})">${totalPages}</button>`;
+    } else {
+        for (let i = 1; i <= totalPages; i++) {
+            paginationHTML += `<button class="px-3 py-1 rounded-md ${i === currentPage ? 'bg-blue-600 text-white' : 'bg-white border'}" onclick="changePage(${i})">${i}</button>`;
         }
     }
 
-    // Next button
     paginationHTML += `<button class="px-3 py-1 rounded-md ${currentPage === totalPages ? 'bg-gray-200 cursor-not-allowed' : 'bg-white border'}" ${currentPage === totalPages ? 'disabled' : ''} onclick="changePage(${currentPage + 1})"><i class="fas fa-chevron-right"></i></button>`;
 
     pagination.innerHTML = paginationHTML;
 }
-
 
 function changePage(page) {
     const totalPages = Math.ceil(filteredProxies.length / pageSize);
@@ -304,64 +220,54 @@ function changePage(page) {
     currentPage = page;
     renderProxies();
     renderPagination();
+    checkVisibleProxiesHealth();
     document.getElementById('proxyContainer').scrollIntoView({ behavior: 'smooth' });
 }
 
-/**
- * Imports proxies from a given URL.
- */
-async function importProxies() {
-    const proxyUrl = document.getElementById('proxyUrlInput').value.trim();
-    const sourceName = document.getElementById('sourceNameInput').value.trim() || 'Manual Import';
-    if (!proxyUrl) return alert('Please enter a URL.');
 
-    try {
-        const response = await fetch(proxyUrl);
-        if (!response.ok) throw new Error(`Failed to fetch: ${response.status}`);
+// --- Health Checks ---
 
-        const text = await response.text();
-        const lines = text.split('\n').filter(Boolean);
+async function checkVisibleProxiesHealth() {
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    const visibleProxies = filteredProxies.slice(startIndex, endIndex);
+    await processHealthCheckBatch(visibleProxies);
+    renderProxies(); // Re-render to show updated statuses
+}
 
-        const newProxies = lines.map(line => {
-            const [proxyIP, proxyPort, country, org] = line.split(',');
-            return {
-                id: crypto.randomUUID(),
-                proxyIP: proxyIP || 'N/A',
-                proxyPort: proxyPort || 'N/A',
-                country: country || 'N/A',
-                org: org || 'N/A',
-                status: 'unknown',
-                latency: 0,
-                addedAt: new Date().toISOString()
-            };
-        });
+async function checkAllProxiesHealth(showIndicator = false) {
+    if (showIndicator) {
+        document.getElementById('loadingIndicator').classList.remove('hidden');
+        document.getElementById('proxyContainer').classList.add('hidden');
+        document.getElementById('pagination').classList.add('hidden');
+    }
 
-        if (newProxies.length === 0) return alert('No valid proxies found.');
+    const batchSize = 50;
+    for (let i = 0; i < proxies.length; i += batchSize) {
+        const batch = proxies.slice(i, i + batchSize);
+        await processHealthCheckBatch(batch);
+    }
 
-        proxies.push(...newProxies);
-        localStorage.setItem('proxyBank', JSON.stringify(proxies));
+    localStorage.setItem('proxyBank', JSON.stringify(proxies));
 
-        alert(`Successfully imported ${newProxies.length} proxies.`);
-        closeImportModal();
-        handleFilterChange(); // Re-render everything
-        checkAllProxiesHealth(); // Check health of all proxies
-    } catch (error) {
-        console.error('Import Error:', error);
-        alert('Failed to import proxies.');
+    if (showIndicator) {
+        setTimeout(() => {
+            document.getElementById('loadingIndicator').classList.add('hidden');
+            document.getElementById('proxyContainer').classList.remove('hidden');
+            document.getElementById('pagination').classList.remove('hidden');
+            applyFiltersAndRender();
+        }, 500);
     }
 }
 
-/**
- * Checks the health of all proxies using the real API.
- */
-async function checkAllProxiesHealth() {
-    document.getElementById('loadingIndicator').classList.remove('hidden');
-    document.getElementById('proxyContainer').classList.add('hidden');
-
-    const healthChecks = proxies.map(proxy => {
+async function processHealthCheckBatch(batch) {
+    const healthChecks = batch.map(proxy => {
         const url = `${API_BASE_URL}/health?proxy=${proxy.proxyIP}:${proxy.proxyPort}`;
         return fetch(url)
-            .then(res => res.json())
+            .then(res => {
+                if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+                return res.json();
+            })
             .catch(err => ({
                 success: false,
                 proxy: `${proxy.proxyIP}:${proxy.proxyPort}`,
@@ -374,30 +280,77 @@ async function checkAllProxiesHealth() {
     const results = await Promise.all(healthChecks);
 
     results.forEach(result => {
-        const proxy = proxies.find(p => `${p.proxyIP}:${p.proxyPort}` === result.proxy);
-        if (proxy) {
-            proxy.status = result.success ? 'online' : 'offline';
-            proxy.latency = result.latency_ms || 0;
-            proxy.lastChecked = new Date().toISOString();
+        const proxyToUpdate = proxies.find(p => `${p.proxyIP}:${p.proxyPort}` === result.proxy);
+        if (proxyToUpdate) {
+            proxyToUpdate.status = result.success ? 'online' : 'offline';
+            proxyToUpdate.latency = result.latency_ms || 0;
+            proxyToUpdate.lastChecked = new Date().toISOString();
         }
     });
-
-    localStorage.setItem('proxyBank', JSON.stringify(proxies));
-
-    // A short delay to make the loading feel less abrupt
-    setTimeout(() => {
-        document.getElementById('loadingIndicator').classList.add('hidden');
-        document.getElementById('proxyContainer').classList.remove('hidden');
-        applyFilters();
-        renderProxies();
-        renderPagination();
-    }, 500);
 }
 
 
-/**
- * Generates a VPN configuration URI with the new format.
- */
+// --- Config Generation & Import ---
+
+function setupGenerateConfigModalListeners() {
+    document.querySelectorAll('.vpn-type-btn').forEach(btn => btn.addEventListener('click', (e) => {
+        document.querySelectorAll('.vpn-type-btn').forEach(b => b.classList.remove('bg-blue-600', 'text-white'));
+        e.target.classList.add('bg-blue-600', 'text-white');
+        selectedVpnType = e.target.dataset.type;
+    }));
+    document.querySelectorAll('.port-btn').forEach(btn => btn.addEventListener('click', (e) => {
+        document.querySelectorAll('.port-btn').forEach(b => b.classList.remove('bg-blue-600', 'text-white'));
+        e.target.classList.add('bg-blue-600', 'text-white');
+        selectedPort = e.target.dataset.port;
+    }));
+    document.querySelectorAll('.format-btn').forEach(btn => btn.addEventListener('click', (e) => {
+        document.querySelectorAll('.format-btn').forEach(b => b.classList.remove('bg-blue-600', 'text-white'));
+        e.target.classList.add('bg-blue-600', 'text-white');
+        selectedFormat = e.target.dataset.format;
+    }));
+
+    document.getElementById('generateUuidBtn').addEventListener('click', generateUUID);
+    document.getElementById('cancelGenerateBtn').addEventListener('click', () => document.getElementById('generateConfigModal').classList.add('hidden'));
+    document.getElementById('confirmGenerateBtn').addEventListener('click', generateConfiguration);
+    document.getElementById('closeResultBtn').addEventListener('click', () => document.getElementById('resultModal').classList.add('hidden'));
+    document.getElementById('copyResultBtn').addEventListener('click', copyResult);
+
+    document.querySelector('.vpn-type-btn[data-type="trojan"]').classList.add('bg-blue-600', 'text-white');
+    document.querySelector('.port-btn[data-port="443"]').classList.add('bg-blue-600', 'text-white');
+    document.querySelector('.format-btn[data-format="uri"]').classList.add('bg-blue-600', 'text-white');
+}
+
+async function importProxies() {
+    const proxyUrl = document.getElementById('proxyUrlInput').value.trim();
+    if (!proxyUrl) return alert('Please enter a URL.');
+
+    try {
+        const response = await fetch(proxyUrl);
+        if (!response.ok) throw new Error(`Failed to fetch: ${response.status}`);
+        const text = await response.text();
+        const lines = text.split('\n').filter(Boolean);
+
+        const newProxies = lines.map(line => {
+            const [proxyIP, proxyPort, country, org] = line.split(',');
+            return { id: crypto.randomUUID(), proxyIP, proxyPort, country, org, status: 'unknown', latency: 0 };
+        });
+
+        if (newProxies.length === 0) return alert('No valid proxies found.');
+
+        proxies.push(...newProxies);
+        localStorage.setItem('proxyBank', JSON.stringify(proxies));
+
+        alert(`Successfully imported ${newProxies.length} proxies.`);
+        document.getElementById('importModal').classList.add('hidden');
+        populateCountryFilter();
+        applyFiltersAndRender();
+        checkAllProxiesHealth(true);
+    } catch (error) {
+        console.error('Import Error:', error);
+        alert('Failed to import proxies.');
+    }
+}
+
 function generateConfiguration() {
     const workerDomain = document.getElementById('workerDomainSelect').value;
     const uuid = document.getElementById('uuidInput').value;
@@ -406,16 +359,16 @@ function generateConfiguration() {
     const host = new URL(workerDomain).hostname;
     const security = selectedPort === '443' ? 'tls' : 'none';
     const path = encodeURIComponent(`/${selectedProxy.proxyIP}-${selectedProxy.proxyPort}`);
-    const remark = encodeURIComponent(`#${selectedVpnType.toUpperCase()}-${selectedProxy.country}`);
+    const remark = encodeURIComponent(`${selectedVpnType.toUpperCase()}-${selectedProxy.country}`);
     let config = '';
 
     if (selectedVpnType === 'trojan') {
-        config = `trojan://${uuid}@${host}:${selectedPort}?path=${path}&security=${security}&host=${host}&type=ws&sni=${host}${remark}`;
+        config = `trojan://${uuid}@${host}:${selectedPort}?path=${path}&security=${security}&host=${host}&type=ws&sni=${host}#${remark}`;
     } else if (selectedVpnType === 'vless') {
-        config = `vless://${uuid}@${host}:${selectedPort}?path=${path}&security=${security}&encryption=none&host=${host}&type=ws&sni=${host}${remark}`;
+        config = `vless://${uuid}@${host}:${selectedPort}?path=${path}&security=${security}&encryption=none&host=${host}&type=ws&sni=${host}#${remark}`;
     } else if (selectedVpnType === 'ss') {
         const encodedPassword = btoa(`chacha20-ietf-poly1305:${uuid}`);
-        config = `ss://${encodedPassword}@${host}:${selectedPort}?plugin=v2ray-plugin;mode=websocket;path=${path};host=${host}${security === 'tls' ? ';tls' : ''};sni=${host}${remark}`;
+        config = `ss://${encodedPassword}@${host}:${selectedPort}?plugin=v2ray-plugin;mode=websocket;path=${path};host=${host}${security === 'tls' ? ';tls' : ''};sni=${host}#${remark}`;
     }
 
     const resultContent = document.getElementById('resultContent');
@@ -429,6 +382,9 @@ function generateConfiguration() {
     document.getElementById('generateConfigModal').classList.add('hidden');
     document.getElementById('resultModal').classList.remove('hidden');
 }
+
+
+// --- Utility Functions ---
 
 function generateUUID() {
     const uuid = crypto.randomUUID();
@@ -447,9 +403,30 @@ function copyResult() {
     }).catch(err => alert('Failed to copy.'));
 }
 
+function updateWorkerDomainOptions() {
+    const workerDomainSelect = document.getElementById('workerDomainSelect');
+    if (!workerDomainSelect) return;
+    workerDomainSelect.innerHTML = '<option value="">Select a worker domain</option>';
+    tunnels.forEach(tunnel => {
+        const option = document.createElement('option');
+        option.value = `https://${tunnel.domain}`;
+        option.textContent = `${tunnel.name} (${tunnel.domain})`;
+        workerDomainSelect.appendChild(option);
+    });
+}
+
 function getCountryName(code) {
     const names = { 'US': 'United States', 'SG': 'Singapore', 'JP': 'Japan', 'DE': 'Germany', 'FR': 'France' };
     return names[code] || code;
+}
+
+function getFlagEmoji(countryCode) {
+    if (!countryCode) return '';
+    const codePoints = countryCode
+        .toUpperCase()
+        .split('')
+        .map(char => 127397 + char.charCodeAt());
+    return String.fromCodePoint(...codePoints);
 }
 
 // Make functions globally accessible for onclick handlers

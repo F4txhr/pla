@@ -2,46 +2,54 @@
 // Subscription Page Logic
 // =================================================================================
 
-// Global variables for the subscription page
+// --- Page State ---
 let subProxies = [];
 // Note: 'tunnels' is a global from app.js
 
+// --- DOMContentLoaded Listener ---
 document.addEventListener('DOMContentLoaded', () => {
     loadSubscriptionData();
     setupSubscriptionEventListeners();
 });
 
-/**
- * Loads necessary data from localStorage.
- */
+
+// --- Initialization & Setup ---
+
 function loadSubscriptionData() {
     const savedProxies = localStorage.getItem('proxyBank');
     subProxies = savedProxies ? JSON.parse(savedProxies) : [];
     populateSelects();
 }
 
-/**
- * Sets up event listeners specific to the subscription page.
- */
 function setupSubscriptionEventListeners() {
-    // Add event listeners to the form, but remove the old ones for protocol/port/format
-    // as they are now handled by the new "mix" logic.
     document.getElementById('configForm').addEventListener('submit', (e) => {
         e.preventDefault();
         generateConfiguration();
     });
 
-    // Result controls
     document.getElementById('copyBtn').addEventListener('click', copyToClipboard);
     document.getElementById('downloadBtn').addEventListener('click', downloadConfiguration);
+
+    // Listener for format buttons to show/hide the template level selector
+    document.querySelectorAll('.format-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            document.querySelectorAll('.format-btn').forEach(b => b.classList.remove('active'));
+            e.target.classList.add('active');
+            const selectedFormat = e.target.dataset.format;
+            const templateLevelContainer = document.getElementById('templateLevelContainer');
+            if (selectedFormat === 'clash' || selectedFormat === 'singbox') {
+                templateLevelContainer.classList.remove('hidden');
+            } else {
+                templateLevelContainer.classList.add('hidden');
+            }
+        });
+    });
+    // Set default format button
+    document.querySelector('.format-btn[data-format="uri"]').classList.add('active');
 }
 
-
-/**
- * Populates select dropdowns with data.
- */
 function populateSelects() {
-    // Populate host select (uses 'tunnels' global from app.js)
+    // Populate host select
     const hostSelect = document.getElementById('hostSelect');
     hostSelect.innerHTML = '<option value="any">Any Host (Mix)</option>';
     tunnels
@@ -56,11 +64,11 @@ function populateSelects() {
     // Populate country select
     const countrySelect = document.getElementById('countrySelect');
     countrySelect.innerHTML = '<option value="any">Any Country</option>';
-    const countries = [...new Set(subProxies.map(p => p.country))];
-    countries.forEach(country => {
+    const countries = [...new Set(subProxies.map(p => p.country).filter(Boolean))].sort();
+    countries.forEach(code => {
         const option = document.createElement('option');
-        option.value = country;
-        option.textContent = getCountryName(country);
+        option.value = code;
+        option.textContent = `${getFlagEmoji(code)} ${getCountryName(code)}`;
         countrySelect.appendChild(option);
     });
 
@@ -74,14 +82,13 @@ function populateSelects() {
     `;
 }
 
-/**
- * Generates the VPN configuration based on form inputs.
- * Implements the "Mix All" feature.
- */
+
+// --- Configuration Generation ---
+
 async function generateConfiguration() {
-    const selectedHost = document.getElementById('hostSelect').value;
+    const selectedHostValue = document.getElementById('hostSelect').value;
     const selectedCountry = document.getElementById('countrySelect').value;
-    const selectedProtocol = document.getElementById('protocolSelect').value;
+    const selectedProtocolValue = document.getElementById('protocolSelect').value;
     const count = parseInt(document.getElementById('countInput').value);
 
     const generateBtn = document.getElementById('generateBtn');
@@ -90,52 +97,43 @@ async function generateConfiguration() {
     generateBtn.disabled = true;
 
     try {
-        // --- Filtering Proxies ---
-        let availableProxies = [...subProxies].filter(p => p.status === 'online');
+        // --- Filter available resources ---
+        let availableProxies = subProxies.filter(p => p.status === 'online');
         if (selectedCountry !== 'any') {
             availableProxies = availableProxies.filter(p => p.country === selectedCountry);
         }
-        if (availableProxies.length === 0) {
-            throw new Error(`No online proxies available for the selected criteria.`);
-        }
+        if (availableProxies.length === 0) throw new Error(`No online proxies for selected criteria.`);
 
-        // --- Filtering Hosts ---
         let availableHosts = tunnels.filter(t => t.status === 'online');
-        if (selectedHost !== 'any') {
-            availableHosts = availableHosts.filter(t => `https://${t.domain}` === selectedHost);
+        if (selectedHostValue !== 'any') {
+            availableHosts = availableHosts.filter(t => `https://${t.domain}` === selectedHostValue);
         }
-        if (availableHosts.length === 0) {
-            throw new Error('No online hosts available.');
-        }
+        if (availableHosts.length === 0) throw new Error('No online hosts available.');
 
-        // --- Protocol List ---
-        const availableProtocols = selectedProtocol === 'any'
-            ? ['trojan', 'vless', 'ss']
-            : [selectedProtocol];
+        const availableProtocols = selectedProtocolValue === 'any' ? ['trojan', 'vless', 'ss'] : [selectedProtocolValue];
 
         // --- Generation Loop ---
         const configurations = [];
         for (let i = 0; i < count; i++) {
-            // Select random elements for this iteration
-            const proxy = availableProxies[i % availableProxies.length]; // Cycle through proxies
+            const proxy = availableProxies[i % availableProxies.length];
             const hostInfo = availableHosts[Math.floor(Math.random() * availableHosts.length)];
             const protocol = availableProtocols[Math.floor(Math.random() * availableProtocols.length)];
 
             const uuid = crypto.randomUUID();
             const host = hostInfo.domain;
-            const port = '443'; // Assuming TLS for all mixed configs
+            const port = '443';
             const security = 'tls';
             const path = encodeURIComponent(`/${proxy.proxyIP}-${proxy.proxyPort}`);
-            const remark = encodeURIComponent(`#${protocol.toUpperCase()}-${proxy.country}-${i + 1}`);
+            const remark = encodeURIComponent(`${protocol.toUpperCase()}-${proxy.country}-${i + 1}`);
 
             let config = '';
             if (protocol === 'trojan') {
-                config = `trojan://${uuid}@${host}:${port}?path=${path}&security=${security}&host=${host}&type=ws&sni=${host}${remark}`;
+                config = `trojan://${uuid}@${host}:${port}?path=${path}&security=${security}&host=${host}&type=ws&sni=${host}#${remark}`;
             } else if (protocol === 'vless') {
-                config = `vless://${uuid}@${host}:${port}?path=${path}&security=${security}&encryption=none&host=${host}&type=ws&sni=${host}${remark}`;
+                config = `vless://${uuid}@${host}:${port}?path=${path}&security=${security}&encryption=none&host=${host}&type=ws&sni=${host}#${remark}`;
             } else if (protocol === 'ss') {
                 const encodedPassword = btoa(`chacha20-ietf-poly1305:${uuid}`);
-                config = `ss://${encodedPassword}@${host}:${port}?plugin=v2ray-plugin;mode=websocket;path=${path};host=${host};tls;sni=${host}${remark}`;
+                config = `ss://${encodedPassword}@${host}:${port}?plugin=v2ray-plugin;mode=websocket;path=${path};host=${host};tls;sni=${host}#${remark}`;
             }
             configurations.push(config);
         }
@@ -169,11 +167,8 @@ async function generateConfiguration() {
 }
 
 
-/**
- * Displays the generated configuration result.
- * @param {string} result - The configuration string or QR code data.
- * @param {string} format - The output format ('uri', 'qrcode', etc.).
- */
+// --- UI & Utility Functions ---
+
 function showResult(result, format) {
     const resultSection = document.getElementById('resultSection');
     const resultContent = document.getElementById('resultContent');
@@ -225,4 +220,13 @@ function downloadConfiguration() {
 function getCountryName(code) {
     const names = { 'US': 'United States', 'SG': 'Singapore', 'JP': 'Japan', 'DE': 'Germany', 'FR': 'France' };
     return names[code] || code;
+}
+
+function getFlagEmoji(countryCode) {
+    if (!countryCode) return '';
+    const codePoints = countryCode
+        .toUpperCase()
+        .split('')
+        .map(char => 127397 + char.charCodeAt());
+    return String.fromCodePoint(...codePoints);
 }
