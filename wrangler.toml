@@ -1,6 +1,6 @@
 name = "vpn-manager"
 main = "index.js"
-account_id = "877922defd6351a3856f3b342cce03e3" # User should replace this
+account_id = "bbcd656c77807de9d0ae2e953a2d441a" # User should replace this
 
 # KV Namespace binding.
 # IMPORTANT: You must create a KV Namespace in your Cloudflare dashboard

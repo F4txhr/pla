@@ -2,12 +2,13 @@
 // Proxies Page Logic (KV Caching Model)
 // =================================================================================
 
-// --- Page State ---
+// --- Page State & Config ---
 let allProxies = []; // The single source of truth from the API
 let filteredProxies = [];
 let currentPage = 1;
 let pageSize = 12;
 let selectedProxy = null; // For the 'Generate Config' modal
+const BATCH_SIZE = 1000; // User-defined batch size for health checks
 
 // --- DOMContentLoaded Listener ---
 document.addEventListener('DOMContentLoaded', () => {
@@ -17,26 +18,21 @@ document.addEventListener('DOMContentLoaded', () => {
 // --- Initialization & Setup ---
 
 async function initializeProxyPage() {
-    // Show loading indicator while we fetch initial data
     document.getElementById('loadingIndicator').classList.remove('hidden');
     document.getElementById('proxyContainer').classList.add('hidden');
 
     await loadProxiesFromApi();
 
-    // Setup UI components that depend on data
     populateCountryFilter();
     applyFiltersAndRender();
 
-    // Hide loading indicator and show content
     document.getElementById('loadingIndicator').classList.add('hidden');
     document.getElementById('proxyContainer').classList.remove('hidden');
 
-    // Asynchronously check for and refresh stale proxies in the background
-    checkAndRefreshStaleProxies();
+    checkVisibleProxiesHealth(); // Priority check for the first page
+    checkAndRefreshStaleProxies(); // Asynchronous background check for all stale proxies
 
-    // Setup event listeners after initial elements are populated
     setupProxyEventListeners();
-    // The shared 'app.js' will have already set up the common listeners
 }
 
 function setupProxyEventListeners() {
@@ -46,6 +42,7 @@ function setupProxyEventListeners() {
     document.getElementById('pageSize').addEventListener('change', (e) => {
         pageSize = parseInt(e.target.value);
         applyFiltersAndRender();
+        checkVisibleProxiesHealth(); // Re-check if page size changes
     });
     document.getElementById('importBtn').addEventListener('click', () => document.getElementById('importModal').classList.remove('hidden'));
     document.getElementById('emptyStateImportBtn').addEventListener('click', () => document.getElementById('importModal').classList.remove('hidden'));
@@ -179,7 +176,7 @@ function renderProxies() {
     document.querySelectorAll('.generate-config-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             selectedProxy = allProxies.find(p => p.id === e.currentTarget.dataset.proxyId);
-            updateWorkerDomainOptions(); // Fix: Repopulate dropdown on modal open
+            updateWorkerDomainOptions();
             document.getElementById('generateConfigModal').classList.remove('hidden');
             generateUUID();
         });
@@ -189,22 +186,17 @@ function renderProxies() {
 function renderPagination() {
     const pagination = document.getElementById('pagination');
     const totalPages = Math.ceil(filteredProxies.length / pageSize);
-
     pagination.classList.toggle('hidden', totalPages <= 1);
     if (totalPages <= 1) {
         pagination.innerHTML = '';
         return;
     }
-
     let paginationHTML = '';
     const maxVisiblePages = 5;
-
     paginationHTML += `<button class="px-3 py-1 rounded-md ${currentPage === 1 ? 'bg-gray-200 cursor-not-allowed' : 'bg-white border'}" ${currentPage === 1 ? 'disabled' : ''} onclick="changePage(${currentPage - 1})"><i class="fas fa-chevron-left"></i></button>`;
-
     if (totalPages > maxVisiblePages + 2) {
         let startPage = Math.max(2, currentPage - 1);
         let endPage = Math.min(totalPages - 1, currentPage + 1);
-
         if (currentPage < 4) {
             startPage = 2;
             endPage = Math.min(totalPages - 1, 1 + maxVisiblePages - 1);
@@ -212,14 +204,11 @@ function renderPagination() {
             endPage = totalPages - 1;
             startPage = Math.max(2, endPage - maxVisiblePages + 1);
         }
-
         paginationHTML += `<button class="px-3 py-1 rounded-md ${1 === currentPage ? 'bg-blue-600 text-white' : 'bg-white border'}" onclick="changePage(1)">1</button>`;
         if (startPage > 2) paginationHTML += `<span class="px-3 py-1">...</span>`;
-
         for (let i = startPage; i <= endPage; i++) {
             paginationHTML += `<button class="px-3 py-1 rounded-md ${i === currentPage ? 'bg-blue-600 text-white' : 'bg-white border'}" onclick="changePage(${i})">${i}</button>`;
         }
-
         if (endPage < totalPages - 1) paginationHTML += `<span class="px-3 py-1">...</span>`;
         paginationHTML += `<button class="px-3 py-1 rounded-md ${totalPages === currentPage ? 'bg-blue-600 text-white' : 'bg-white border'}" onclick="changePage(${totalPages})">${totalPages}</button>`;
     } else {
@@ -227,29 +216,32 @@ function renderPagination() {
             paginationHTML += `<button class="px-3 py-1 rounded-md ${i === currentPage ? 'bg-blue-600 text-white' : 'bg-white border'}" onclick="changePage(${i})">${i}</button>`;
         }
     }
-
     paginationHTML += `<button class="px-3 py-1 rounded-md ${currentPage === totalPages ? 'bg-gray-200 cursor-not-allowed' : 'bg-white border'}" ${currentPage === totalPages ? 'disabled' : ''} onclick="changePage(${currentPage + 1})"><i class="fas fa-chevron-right"></i></button>`;
-
     pagination.innerHTML = paginationHTML;
 }
 
 function changePage(page) {
     const totalPages = Math.ceil(filteredProxies.length / pageSize);
     if (page < 1 || page > totalPages) return;
-
     currentPage = page;
     renderProxies();
     renderPagination();
+    checkVisibleProxiesHealth(); // Priority check for newly visible proxies
     document.getElementById('proxyContainer').scrollIntoView({ behavior: 'smooth' });
 }
 
-
 // --- Health Checks & Data Sync ---
+
+async function checkVisibleProxiesHealth() {
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    const visibleProxies = filteredProxies.slice(startIndex, endIndex);
+    await checkProxies(visibleProxies, false);
+}
 
 async function checkAndRefreshStaleProxies() {
     const now = Date.now();
     const staleProxies = allProxies.filter(p => !p.lastChecked || (now - new Date(p.lastChecked).getTime()) > CACHE_DURATION_MS);
-
     if (staleProxies.length > 0) {
         console.log(`Found ${staleProxies.length} stale proxies. Refreshing...`);
         await checkProxies(staleProxies, false);
@@ -258,21 +250,20 @@ async function checkAndRefreshStaleProxies() {
 
 async function checkProxies(proxiesToCheck, isManualTrigger) {
     if (isManualTrigger) {
-        allProxies.forEach(p => p.status = 'testing');
-        applyFiltersAndRender();
+        proxiesToCheck.forEach(p => p.status = 'testing');
     } else {
         proxiesToCheck.forEach(p => {
             const proxy = allProxies.find(ap => ap.id === p.id);
             if (proxy) proxy.status = 'testing';
         });
-        renderProxies();
     }
+    renderProxies(); // Show 'testing' status immediately
 
-    const batchSize = 300; // Adjusted batch size
+    const batchSize = 1000; // User-defined batch size
     for (let i = 0; i < proxiesToCheck.length; i += batchSize) {
         const batch = proxiesToCheck.slice(i, i + batchSize);
         await processHealthCheckBatch(batch);
-        renderProxies();
+        renderProxies(); // Re-render after each batch completes
         await saveProxiesToApi();
     }
     console.log('Health check cycle complete.');
@@ -305,7 +296,6 @@ async function saveProxiesToApi() {
         console.error('Failed to save proxy data to API:', error);
     }
 }
-
 
 // --- Import & Config Generation ---
 
@@ -388,6 +378,8 @@ function generateConfiguration(selectedVpnType, selectedPort, selectedFormat) {
     document.getElementById('generateConfigModal').classList.add('hidden');
     document.getElementById('resultModal').classList.remove('hidden');
 }
+
+// --- Utility Functions ---
 
 function generateUUID() {
     document.getElementById('uuidInput').value = crypto.randomUUID();
