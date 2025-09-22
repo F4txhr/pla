@@ -1,8 +1,24 @@
 name = "vpn-manager"
-type = "webpack"
-account_id = "bbcd656c77807de9d0ae2e953a2d441a" # Ganti dengan account ID Anda
-workers_dev = true
+compatibility_date = "2025-09-22"
+main = "index.js"
+account_id = "bbcd656c77807de9d0ae2e953a2d441a" # User should replace this
+
+# =================================================================================
+# KV Namespace Bindings
+# =================================================================================
+# IMPORTANT:
+# For the application to work, you MUST create three (3) KV Namespaces in your
+# Cloudflare dashboard and then paste their unique IDs below.
+#
+# 1. PROXY_STATUS: Stores the health status (online/offline) of all proxies.
+# 2. ACCOUNTS_DATA: Stores data from the 'Accounts' page.
+# 3. APP_DATA: Stores general application data, such as saved 'Tunnel' domains.
+#
+kv_namespaces = [
+  { binding = "PROXY_STATUS", id = "PASTE_YOUR_PROXY_STATUS_KV_ID_HERE" },
+  { binding = "ACCOUNTS_DATA", id = "PASTE_YOUR_ACCOUNTS_DATA_KV_ID_HERE" },
+  { binding = "APP_DATA", id = "PASTE_YOUR_APP_DATA_KV_ID_HERE" }
+]
 
 [site]
 bucket = "./"
-entry-point = "workers-site"
