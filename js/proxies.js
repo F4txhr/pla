@@ -95,7 +95,7 @@ function openImportModal() {
 
 function closeImportModal() {
     document.getElementById('importModal').classList.add('hidden');
-    document.getElementById('proxyUrlInput').value = '';
+    // document.getElementById('proxyUrlInput').value = ''; // Keep the default value
     document.getElementById('sourceNameInput').value = '';
 }
 
@@ -237,6 +237,7 @@ function renderProxies() {
 
 /**
  * Renders pagination controls.
+ * This version only shows a limited number of page buttons.
  */
 function renderPagination() {
     const pagination = document.getElementById('pagination');
@@ -248,12 +249,45 @@ function renderPagination() {
     }
 
     let paginationHTML = '';
+    const maxVisiblePages = 5;
+
     // Previous button
     paginationHTML += `<button class="px-3 py-1 rounded-md ${currentPage === 1 ? 'bg-gray-200 cursor-not-allowed' : 'bg-white border'}" ${currentPage === 1 ? 'disabled' : ''} onclick="changePage(${currentPage - 1})"><i class="fas fa-chevron-left"></i></button>`;
 
-    // Page numbers
-    for (let i = 1; i <= totalPages; i++) {
-        paginationHTML += `<button class="px-3 py-1 rounded-md ${i === currentPage ? 'bg-blue-600 text-white' : 'bg-white border'}" onclick="changePage(${i})">${i}</button>`;
+    if (totalPages <= maxVisiblePages + 2) {
+        // Show all pages if there aren't too many
+        for (let i = 1; i <= totalPages; i++) {
+            paginationHTML += `<button class="px-3 py-1 rounded-md ${i === currentPage ? 'bg-blue-600 text-white' : 'bg-white border'}" onclick="changePage(${i})">${i}</button>`;
+        }
+    } else {
+        // Show smart pagination with ellipsis
+        let startPage = Math.max(1, currentPage - 2);
+        let endPage = Math.min(totalPages, currentPage + 2);
+
+        if (currentPage < 4) {
+            endPage = maxVisiblePages;
+        }
+        if (currentPage > totalPages - 3) {
+            startPage = totalPages - maxVisiblePages + 1;
+        }
+
+        if (startPage > 1) {
+            paginationHTML += `<button class="px-3 py-1 rounded-md bg-white border" onclick="changePage(1)">1</button>`;
+            if (startPage > 2) {
+                paginationHTML += `<span class="px-3 py-1">...</span>`;
+            }
+        }
+
+        for (let i = startPage; i <= endPage; i++) {
+            paginationHTML += `<button class="px-3 py-1 rounded-md ${i === currentPage ? 'bg-blue-600 text-white' : 'bg-white border'}" onclick="changePage(${i})">${i}</button>`;
+        }
+
+        if (endPage < totalPages) {
+            if (endPage < totalPages - 1) {
+                paginationHTML += `<span class="px-3 py-1">...</span>`;
+            }
+            paginationHTML += `<button class="px-3 py-1 rounded-md bg-white border" onclick="changePage(${totalPages})">${totalPages}</button>`;
+        }
     }
 
     // Next button
@@ -261,6 +295,7 @@ function renderPagination() {
 
     pagination.innerHTML = paginationHTML;
 }
+
 
 function changePage(page) {
     const totalPages = Math.ceil(filteredProxies.length / pageSize);
@@ -317,50 +352,70 @@ async function importProxies() {
 }
 
 /**
- * Checks the health of all proxies.
+ * Checks the health of all proxies using the real API.
  */
 async function checkAllProxiesHealth() {
     document.getElementById('loadingIndicator').classList.remove('hidden');
     document.getElementById('proxyContainer').classList.add('hidden');
 
-    // This is a simplified health check. In a real app, you'd use the API.
-    for (const proxy of proxies) {
-        // Simulate a health check
-        const isOnline = Math.random() > 0.3; // 70% chance of being online
-        proxy.status = isOnline ? 'online' : 'offline';
-        proxy.latency = isOnline ? Math.floor(Math.random() * 200) + 30 : 0;
-    }
+    const healthChecks = proxies.map(proxy => {
+        const url = `${API_BASE_URL}/health?proxy=${proxy.proxyIP}:${proxy.proxyPort}`;
+        return fetch(url)
+            .then(res => res.json())
+            .catch(err => ({
+                success: false,
+                proxy: `${proxy.proxyIP}:${proxy.proxyPort}`,
+                status: 'DOWN',
+                latency_ms: 0,
+                error: err.message
+            }));
+    });
+
+    const results = await Promise.all(healthChecks);
+
+    results.forEach(result => {
+        const proxy = proxies.find(p => `${p.proxyIP}:${p.proxyPort}` === result.proxy);
+        if (proxy) {
+            proxy.status = result.success ? 'online' : 'offline';
+            proxy.latency = result.latency_ms || 0;
+            proxy.lastChecked = new Date().toISOString();
+        }
+    });
 
     localStorage.setItem('proxyBank', JSON.stringify(proxies));
 
-    // Simulate network delay
+    // A short delay to make the loading feel less abrupt
     setTimeout(() => {
         document.getElementById('loadingIndicator').classList.add('hidden');
         document.getElementById('proxyContainer').classList.remove('hidden');
         applyFilters();
         renderProxies();
         renderPagination();
-    }, 1000);
+    }, 500);
 }
 
+
 /**
- * Generates a VPN configuration URI.
+ * Generates a VPN configuration URI with the new format.
  */
 function generateConfiguration() {
     const workerDomain = document.getElementById('workerDomainSelect').value;
     const uuid = document.getElementById('uuidInput').value;
     if (!workerDomain || !selectedProxy) return alert('Please select a worker domain and a proxy.');
 
-    const domain = new URL(workerDomain).hostname;
+    const host = new URL(workerDomain).hostname;
+    const security = selectedPort === '443' ? 'tls' : 'none';
+    const path = encodeURIComponent(`/${selectedProxy.proxyIP}-${selectedProxy.proxyPort}`);
+    const remark = encodeURIComponent(`#${selectedVpnType.toUpperCase()}-${selectedProxy.country}`);
     let config = '';
 
     if (selectedVpnType === 'trojan') {
-        config = `trojan://${uuid}@${domain}:${selectedPort}?path=/${selectedProxy.proxyIP}:${selectedProxy.proxyPort}&type=ws&host=${domain}&security=${selectedPort === '443' ? 'tls' : 'none'}#Trojan-${selectedProxy.country}`;
+        config = `trojan://${uuid}@${host}:${selectedPort}?path=${path}&security=${security}&host=${host}&type=ws&sni=${host}${remark}`;
     } else if (selectedVpnType === 'vless') {
-        config = `vless://${uuid}@${domain}:${selectedPort}?path=/${selectedProxy.proxyIP}:${selectedProxy.proxyPort}&type=ws&host=${domain}&encryption=none&security=${selectedPort === '443' ? 'tls' : 'none'}#VLESS-${selectedProxy.country}`;
+        config = `vless://${uuid}@${host}:${selectedPort}?path=${path}&security=${security}&encryption=none&host=${host}&type=ws&sni=${host}${remark}`;
     } else if (selectedVpnType === 'ss') {
         const encodedPassword = btoa(`chacha20-ietf-poly1305:${uuid}`);
-        config = `ss://${encodedPassword}@${domain}:${selectedPort}?plugin=v2ray-plugin;mode=websocket;path=/${selectedProxy.proxyIP}:${selectedProxy.proxyPort};host=${domain}${selectedPort === '443' ? ';tls' : ''}#SS-${selectedProxy.country}`;
+        config = `ss://${encodedPassword}@${host}:${selectedPort}?plugin=v2ray-plugin;mode=websocket;path=${path};host=${host}${security === 'tls' ? ';tls' : ''};sni=${host}${remark}`;
     }
 
     const resultContent = document.getElementById('resultContent');
