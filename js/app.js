@@ -166,22 +166,28 @@ async function saveTunnel(e) {
     e.preventDefault();
     const name = document.getElementById('tunnelName').value;
     const domain = document.getElementById('tunnelDomain').value;
-    let newTunnel = null;
+    let tunnelToCheck = null;
 
     if (editingTunnelId) {
         const index = tunnels.findIndex(t => t.id === editingTunnelId);
-        if (index !== -1) tunnels[index] = { ...tunnels[index], name, domain };
+        if (index !== -1) {
+            tunnels[index] = { ...tunnels[index], name, domain };
+            tunnelToCheck = tunnels[index]; // Get the updated tunnel
+        }
     } else {
-        newTunnel = { id: crypto.randomUUID(), name, domain, status: 'unknown' };
+        const newTunnel = { id: crypto.randomUUID(), name, domain, status: 'unknown' };
         tunnels.push(newTunnel);
+        tunnelToCheck = newTunnel; // Get the new tunnel
     }
 
     await saveTunnelsToApi();
     renderTunnelList();
 
     document.getElementById('tunnelModal').classList.add('hidden');
-    if (newTunnel) {
-        await checkSingleTunnelStatus(newTunnel);
+
+    // If a tunnel was created or updated, check its status.
+    if (tunnelToCheck) {
+        await checkSingleTunnelStatus(tunnelToCheck);
     }
 }
 
