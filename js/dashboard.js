@@ -1,53 +1,67 @@
 // =================================================================================
-// Dashboard Page Logic
+// Dashboard Page Logic (Refactored to use APIs)
 // =================================================================================
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Initial load of stats
-    updateStats();
-
-    // Set an interval to refresh the stats periodically
-    setInterval(updateStats, 30000); // Refresh every 30 seconds
+    initializeDashboard();
 });
 
 /**
- * Fetches the latest proxy data from the API and updates the dashboard statistic cards.
+ * Sets up the dashboard, loads initial data, and sets up listeners.
  */
-async function updateStats() {
+function initializeDashboard() {
+    // Initial load of all stats
+    updateAllStats();
+
+    // Listen for updates from the proxy page to refresh proxy-related stats
+    window.addEventListener('proxyDataUpdated', () => {
+        console.log('Dashboard received proxyDataUpdated event. Refreshing stats.');
+        updateProxyStats();
+    });
+
+    // Periodically refresh all stats to catch any other changes
+    setInterval(updateAllStats, 60000); // Refresh every 60 seconds
+}
+
+/**
+ * Fetches data from all APIs and updates the entire dashboard.
+ */
+async function updateAllStats() {
+    console.log('Updating all dashboard stats...');
     try {
-        const response = await fetch('/api/proxies');
-        if (!response.ok) {
-            throw new Error(`API returned status ${response.status}`);
-        }
-        const proxies = await response.json();
+        const [proxies, tunnels, accounts] = await Promise.all([
+            fetch('/api/proxies').then(res => res.json()),
+            fetch('/api/tunnels').then(res => res.json()),
+            fetch('/api/accounts').then(res => res.json())
+        ]);
 
-        // Use the same 10-minute cache duration as defined in config.js
-        // A more advanced setup might share this constant, but for now this is fine.
-        const CACHE_DURATION_MS = 10 * 60 * 1000;
-        const now = Date.now();
-
-        const onlineProxiesCount = proxies.filter(p =>
-            p.status === 'online' &&
-            p.lastChecked &&
-            (now - new Date(p.lastChecked).getTime()) < CACHE_DURATION_MS
-        ).length;
-
-        // Tunnel and account data are still managed in localStorage for simplicity
-        const tunnels = JSON.parse(localStorage.getItem('tunnelServices') || '[]');
+        const onlineProxiesCount = proxies.filter(p => p.status === 'online').length;
         const activeTunnelsCount = tunnels.filter(t => t.status === 'online').length;
 
-        const accounts = JSON.parse(localStorage.getItem('vpnAccounts') || '[]');
-        const totalAccountsCount = accounts.length;
-
-        // Update the UI with smooth animations
         animateValue('totalProxies', proxies.length);
         animateValue('onlineProxies', onlineProxiesCount);
         animateValue('activeTunnels', activeTunnelsCount);
-        animateValue('totalAccounts', totalAccountsCount);
+        animateValue('totalAccounts', accounts.length);
 
     } catch (error) {
-        console.error('Failed to update dashboard stats:', error);
-        // You could add a UI indicator here to show that stats are stale
+        console.error('Failed to update all dashboard stats:', error);
+    }
+}
+
+/**
+ * Fetches only the proxy data to update proxy-related cards.
+ * This is called by the event listener for a more responsive UI.
+ */
+async function updateProxyStats() {
+    console.log('Updating only proxy stats...');
+    try {
+        const proxies = await fetch('/api/proxies').then(res => res.json());
+        const onlineProxiesCount = proxies.filter(p => p.status === 'online').length;
+
+        animateValue('totalProxies', proxies.length);
+        animateValue('onlineProxies', onlineProxiesCount);
+    } catch (error) {
+        console.error('Failed to update proxy stats:', error);
     }
 }
 

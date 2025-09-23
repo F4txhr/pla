@@ -1,9 +1,11 @@
 import { getAssetFromKV } from '@cloudflare/kv-asset-handler';
 
-// The key used to store the full proxy list in the KV namespace.
+// KV Namespace Keys
 const KV_PROXIES_KEY = 'all_proxies_list';
+const KV_TUNNELS_KEY = 'tunnels_data';
+const KV_ACCOUNTS_KEY = 'accounts_data';
 
-// Main event listener for all incoming requests.
+// Main event listener for fetch events.
 addEventListener('fetch', event => {
   event.respondWith(handleEvent(event));
 });
@@ -14,17 +16,11 @@ addEventListener('fetch', event => {
  */
 async function handleEvent(event) {
   const url = new URL(event.request.url);
-
   if (url.pathname.startsWith('/api/')) {
     return handleApiRequest(event.request);
   }
   return handleStaticAssetRequest(event);
 }
-
-// Key for storing tunnel data in the APP_DATA namespace.
-const KV_TUNNELS_KEY = 'tunnels_data';
-// Key for storing accounts data in the ACCOUNTS_DATA namespace.
-const KV_ACCOUNTS_KEY = 'accounts_data';
 
 /**
  * Handles all requests to /api/ routes by routing them to the correct handler.
@@ -57,12 +53,10 @@ async function handleProxiesApi(request) {
   if (typeof PROXY_STATUS === 'undefined') {
     return new Response(JSON.stringify({ error: 'PROXY_STATUS KV Namespace is not bound.' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
   }
-
   if (request.method === 'GET') {
     const proxiesJson = await PROXY_STATUS.get(KV_PROXIES_KEY, 'json') || [];
     return new Response(JSON.stringify(proxiesJson), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
-
   if (request.method === 'POST') {
     try {
       const updatedProxies = await request.json();
@@ -72,7 +66,6 @@ async function handleProxiesApi(request) {
       return new Response(JSON.stringify({ error: `Failed to parse or update proxies: ${e.message}` }), { status: 400, headers: { 'Content-Type': 'application/json' } });
     }
   }
-
   return new Response('Method Not Allowed', { status: 405 });
 }
 
@@ -84,12 +77,10 @@ async function handleAccountsApi(request) {
   if (typeof ACCOUNTS_DATA === 'undefined') {
     return new Response(JSON.stringify({ error: 'ACCOUNTS_DATA KV Namespace is not bound.' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
   }
-
   if (request.method === 'GET') {
     const accountsJson = await ACCOUNTS_DATA.get(KV_ACCOUNTS_KEY, 'json') || [];
     return new Response(JSON.stringify(accountsJson), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
-
   if (request.method === 'POST') {
     try {
       const updatedAccounts = await request.json();
@@ -99,7 +90,6 @@ async function handleAccountsApi(request) {
       return new Response(JSON.stringify({ error: `Failed to parse or update accounts: ${e.message}` }), { status: 400, headers: { 'Content-Type': 'application/json' } });
     }
   }
-
   return new Response('Method Not Allowed', { status: 405 });
 }
 
@@ -111,12 +101,10 @@ async function handleTunnelsApi(request) {
   if (typeof APP_DATA === 'undefined') {
     return new Response(JSON.stringify({ error: 'APP_DATA KV Namespace is not bound.' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
   }
-
   if (request.method === 'GET') {
     const tunnelsJson = await APP_DATA.get(KV_TUNNELS_KEY, 'json') || [];
     return new Response(JSON.stringify(tunnelsJson), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
-
   if (request.method === 'POST') {
     try {
       const updatedTunnels = await request.json();
@@ -126,7 +114,6 @@ async function handleTunnelsApi(request) {
       return new Response(JSON.stringify({ error: `Failed to parse or update tunnels: ${e.message}` }), { status: 400, headers: { 'Content-Type': 'application/json' } });
     }
   }
-
   return new Response('Method Not Allowed', { status: 405 });
 }
 
@@ -137,18 +124,14 @@ async function handleTunnelsApi(request) {
  */
 async function handleStaticAssetRequest(event) {
   try {
-    return await getAssetFromKV(event, {
-      // Caching options can be configured here if needed.
-    });
+    return await getAssetFromKV(event, {});
   } catch (e) {
-    // If an asset is not found, attempt to serve the 404.html page.
     try {
       let notFoundResponse = await getAssetFromKV(event, {
         mapRequestToAsset: req => new Request(`${new URL(req.url).origin}/404.html`, req),
       });
       return new Response(notFoundResponse.body, { ...notFoundResponse, status: 404 });
     } catch (e) {}
-
     return new Response('Not Found', { status: 404 });
   }
 }

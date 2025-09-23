@@ -29,8 +29,13 @@ async function initializeProxyPage() {
     document.getElementById('loadingIndicator').classList.add('hidden');
     document.getElementById('proxyContainer').classList.remove('hidden');
 
-    checkVisibleProxiesHealth(); // Priority check for the first page
-    checkAndRefreshStaleProxies(); // Asynchronous background check for all stale proxies
+    // Automatically check all stale proxies on page load.
+    const now = Date.now();
+    const staleProxies = allProxies.filter(p => !p.lastChecked || (now - new Date(p.lastChecked).getTime()) > CACHE_DURATION_MS);
+    if (staleProxies.length > 0) {
+        console.log(`Found ${staleProxies.length} stale proxies. Starting automatic health check...`);
+        await checkProxies(staleProxies, false);
+    }
 
     setupProxyEventListeners();
 }
@@ -42,7 +47,6 @@ function setupProxyEventListeners() {
     document.getElementById('pageSize').addEventListener('change', (e) => {
         pageSize = parseInt(e.target.value);
         applyFiltersAndRender();
-        checkVisibleProxiesHealth(); // Re-check if page size changes
     });
     document.getElementById('importBtn').addEventListener('click', () => document.getElementById('importModal').classList.remove('hidden'));
     document.getElementById('emptyStateImportBtn').addEventListener('click', () => document.getElementById('importModal').classList.remove('hidden'));
@@ -176,9 +180,9 @@ function renderProxies() {
     }).join('');
 
     document.querySelectorAll('.generate-config-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
+        btn.addEventListener('click', async (e) => {
             selectedProxy = allProxies.find(p => p.id === e.currentTarget.dataset.proxyId);
-            updateWorkerDomainOptions();
+            await updateWorkerDomainOptions();
             document.getElementById('generateConfigModal').classList.remove('hidden');
             generateUUID();
         });
@@ -228,27 +232,12 @@ function changePage(page) {
     currentPage = page;
     renderProxies();
     renderPagination();
-    checkVisibleProxiesHealth(); // Priority check for newly visible proxies
+    // No longer checking health on page change for simplicity.
+    // The initial load check and manual refresh are the primary triggers.
     document.getElementById('proxyContainer').scrollIntoView({ behavior: 'smooth' });
 }
 
 // --- Health Checks & Data Sync ---
-
-async function checkVisibleProxiesHealth() {
-    const startIndex = (currentPage - 1) * pageSize;
-    const endIndex = startIndex + pageSize;
-    const visibleProxies = filteredProxies.slice(startIndex, endIndex);
-    await checkProxies(visibleProxies, false);
-}
-
-async function checkAndRefreshStaleProxies() {
-    const now = Date.now();
-    const staleProxies = allProxies.filter(p => !p.lastChecked || (now - new Date(p.lastChecked).getTime()) > CACHE_DURATION_MS);
-    if (staleProxies.length > 0) {
-        console.log(`Found ${staleProxies.length} stale proxies. Refreshing...`);
-        await checkProxies(staleProxies, false);
-    }
-}
 
 async function checkProxies(proxiesToCheck, isManualTrigger) {
     if (isManualTrigger) {
@@ -267,6 +256,8 @@ async function checkProxies(proxiesToCheck, isManualTrigger) {
         await processHealthCheckBatch(batch);
         renderProxies(); // Re-render after each batch completes
         await saveProxiesToApi();
+        // Notify other parts of the application (like the dashboard) that data has changed.
+        window.dispatchEvent(new CustomEvent('proxyDataUpdated'));
     }
     console.log('Health check cycle complete.');
 }
@@ -397,17 +388,26 @@ function copyResult() {
     });
 }
 
-function updateWorkerDomainOptions() {
+async function updateWorkerDomainOptions() {
     const workerDomainSelect = document.getElementById('workerDomainSelect');
     if (!workerDomainSelect) return;
-    const tunnels = JSON.parse(localStorage.getItem('tunnelServices') || '[]');
-    workerDomainSelect.innerHTML = '<option value="">Select a worker domain</option>';
-    tunnels.forEach(tunnel => {
-        const option = document.createElement('option');
-        option.value = `https://${tunnel.domain}`;
-        option.textContent = `${tunnel.name} (${tunnel.domain})`;
-        workerDomainSelect.appendChild(option);
-    });
+
+    try {
+        const response = await fetch('/api/tunnels');
+        if (!response.ok) throw new Error('Failed to fetch tunnels');
+        const tunnels = await response.json();
+
+        workerDomainSelect.innerHTML = '<option value="">Select a worker domain</option>';
+        tunnels.forEach(tunnel => {
+            const option = document.createElement('option');
+            option.value = `https://${tunnel.domain}`;
+            option.textContent = `${tunnel.name} (${tunnel.domain})`;
+            workerDomainSelect.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Error loading tunnels for modal:', error);
+        workerDomainSelect.innerHTML = '<option value="">Error loading domains</option>';
+    }
 }
 
 function getCountryName(code) {
