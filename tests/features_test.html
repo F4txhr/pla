@@ -3,21 +3,23 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width">
-  <title>Filter Tests - QUnit</title>
+  <title>Feature Tests - QUnit</title>
   <link rel="stylesheet" href="https://code.jquery.com/qunit/qunit-2.20.0.css">
 </head>
 <body>
   <div id="qunit"></div>
   <div id="qunit-fixture">
-      <!-- Mock DOM elements required by the filter function -->
+      <!-- Mock DOM elements required by the functions -->
       <select id="countryFilter"><option value=""></option></select>
       <select id="statusFilter"><option value=""></option></select>
+      <input type="text" id="searchInput">
+      <button id="clearFiltersBtn"></button>
       <span id="totalProxies"></span>
   </div>
   <script src="https://code.jquery.com/qunit/qunit-2.20.0.js"></script>
-  <!-- The script with the function to test -->
+  <!-- The script with the functions to test -->
   <script src="../js/proxies.js"></script>
   <!-- The test script -->
-  <script src="filter_test.js"></script>
+  <script src="features_test.js"></script>
 </body>
 </html>
