@@ -305,12 +305,25 @@ async function importProxies() {
             if (!proxyIP || !proxyPort) return null;
             return { id: crypto.randomUUID(), proxyIP, proxyPort, country: country || 'XX', org, status: 'unknown', latency: 0, lastChecked: null };
         }).filter(Boolean);
-        if (newProxies.length === 0) return alert('No valid proxies found.');
-        allProxies = newProxies;
-        alert(`Successfully imported ${newProxies.length} proxies. Saving and starting health checks...`);
+
+        if (newProxies.length === 0) {
+            return alert('No valid proxies found in the provided list.');
+        }
+
+        const existingProxyKeys = new Set(allProxies.map(p => `${p.proxyIP}:${p.proxyPort}`));
+        const uniqueNewProxies = newProxies.filter(p => !existingProxyKeys.has(`${p.proxyIP}:${p.proxyPort}`));
+
+        if (uniqueNewProxies.length === 0) {
+            return alert('All proxies from the list are already in your collection.');
+        }
+
+        allProxies.push(...uniqueNewProxies);
+
+        alert(`Successfully imported ${uniqueNewProxies.length} new proxies. Saving and starting health checks...`);
         document.getElementById('importModal').classList.add('hidden');
         populateCountryFilter();
-        await checkProxies(allProxies, true);
+        // Check only the newly added proxies to be more efficient
+        await checkProxies(uniqueNewProxies, true);
     } catch (error) {
         console.error('Import Error:', error);
         alert('Failed to import proxies.');
