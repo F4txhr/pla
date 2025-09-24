@@ -24,20 +24,20 @@ async function initializeProxyPage() {
     await loadProxiesFromApi();
 
     populateCountryFilter();
+    setupProxyEventListeners(); // Setup interactivity as soon as data is available
     applyFiltersAndRender();
 
     document.getElementById('loadingIndicator').classList.add('hidden');
     document.getElementById('proxyContainer').classList.remove('hidden');
 
-    // Automatically check all stale proxies on page load.
+    // Automatically check all stale proxies on page load. This now runs in the background.
     const now = Date.now();
     const staleProxies = allProxies.filter(p => !p.lastChecked || (now - new Date(p.lastChecked).getTime()) > CACHE_DURATION_MS);
     if (staleProxies.length > 0) {
         console.log(`Found ${staleProxies.length} stale proxies. Starting automatic health check...`);
-        await checkProxies(staleProxies, false);
+        // Do not await this. Let it run in the background so the UI is not blocked.
+        checkProxies(staleProxies, false);
     }
-
-    setupProxyEventListeners();
 }
 
 function setupProxyEventListeners() {
