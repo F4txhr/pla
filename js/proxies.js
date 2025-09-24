@@ -80,22 +80,24 @@ function applyFilters() {
     const countryFilter = document.getElementById('countryFilter').value;
     const statusFilter = document.getElementById('statusFilter').value;
 
-    let sourceProxies = [...allProxies];
+    let tempProxies = [...allProxies];
 
     // Apply country filter
     if (countryFilter) {
-        sourceProxies = sourceProxies.filter(p => p.country === countryFilter);
+        tempProxies = tempProxies.filter(p => p.country === countryFilter);
     }
 
-    // Apply status filter - Simplified and corrected logic
-    if (statusFilter === 'online') {
-        sourceProxies = sourceProxies.filter(p => p.status === 'online');
-    } else if (statusFilter === 'offline') {
-        sourceProxies = sourceProxies.filter(p => p.status === 'offline');
+    // Apply status filter to the already-filtered list
+    if (statusFilter) {
+        tempProxies = tempProxies.filter(p => p.status === statusFilter);
     }
 
-    filteredProxies = sourceProxies;
-    document.getElementById('totalProxies').textContent = filteredProxies.length;
+    filteredProxies = tempProxies;
+    // This DOM element might not exist on all pages, so check for it.
+    const totalProxiesSpan = document.getElementById('totalProxies');
+    if (totalProxiesSpan) {
+        totalProxiesSpan.textContent = filteredProxies.length;
+    }
 }
 
 function populateCountryFilter() {
@@ -305,25 +307,12 @@ async function importProxies() {
             if (!proxyIP || !proxyPort) return null;
             return { id: crypto.randomUUID(), proxyIP, proxyPort, country: country || 'XX', org, status: 'unknown', latency: 0, lastChecked: null };
         }).filter(Boolean);
-
-        if (newProxies.length === 0) {
-            return alert('No valid proxies found in the provided list.');
-        }
-
-        const existingProxyKeys = new Set(allProxies.map(p => `${p.proxyIP}:${p.proxyPort}`));
-        const uniqueNewProxies = newProxies.filter(p => !existingProxyKeys.has(`${p.proxyIP}:${p.proxyPort}`));
-
-        if (uniqueNewProxies.length === 0) {
-            return alert('All proxies from the list are already in your collection.');
-        }
-
-        allProxies.push(...uniqueNewProxies);
-
-        alert(`Successfully imported ${uniqueNewProxies.length} new proxies. Saving and starting health checks...`);
+        if (newProxies.length === 0) return alert('No valid proxies found.');
+        allProxies = newProxies;
+        alert(`Successfully imported ${newProxies.length} proxies. Saving and starting health checks...`);
         document.getElementById('importModal').classList.add('hidden');
         populateCountryFilter();
-        // Check only the newly added proxies to be more efficient
-        await checkProxies(uniqueNewProxies, true);
+        await checkProxies(allProxies, true);
     } catch (error) {
         console.error('Import Error:', error);
         alert('Failed to import proxies.');

@@ -215,17 +215,10 @@ async function deleteTunnel(tunnelId) {
 }
 
 async function checkSingleTunnelStatus(tunnel) {
-    // Determine the correct URL, adding https:// if no protocol is present.
-    let url = tunnel.domain;
-    if (!/^https?:\/\//i.test(url)) {
-        url = `https://${url}`;
-    }
-
     try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000);
-        // Use the sanitized URL
-        const response = await fetch(url, { signal: controller.signal, mode: 'no-cors' });
+        const response = await fetch(`https://${tunnel.domain}`, { signal: controller.signal, mode: 'no-cors' });
         clearTimeout(timeoutId);
         // For 'no-cors', we can't read response status, so we assume success if it doesn't throw.
         // This is a basic check; a more robust solution would involve a server-side check.
