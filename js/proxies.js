@@ -1,65 +1,271 @@
 // =================================================================================
-// Main Proxies Page - Consolidated Script
+// Proxies Page Logic
 // =================================================================================
 
-// --- Page State & Config ---
-let allProxies = []; // The single source of truth from the API
+// --- Page State ---
+let allProxies = [];
 let filteredProxies = [];
 let currentPage = 1;
 let pageSize = 12;
-let selectedProxy = null; // For the 'Generate Config' modal
-const CACHE_DURATION_MS = 1000 * 60 * 60; // 1 hour cache for proxy status
+let selectedProxy = null;
 
-// =================================================================================
-// Utility Functions
-// =================================================================================
+// --- DOMContentLoaded Listener ---
+document.addEventListener('DOMContentLoaded', () => {
+    // Only initialize if we are on the proxies page
+    if (document.getElementById('proxyContainer')) {
+        initializeProxyPage();
+    }
+});
 
-function getCountryName(code) {
-    const names = { 'US': 'United States', 'SG': 'Singapore', 'JP': 'Japan', 'DE': 'Germany', 'FR': 'France', 'XX': 'Unknown' };
-    return names[code] || code;
+// --- Initialization ---
+async function initializeProxyPage() {
+    const loadingIndicator = document.getElementById('loadingIndicator');
+    const proxyContainer = document.getElementById('proxyContainer');
+
+    loadingIndicator.classList.remove('hidden');
+    proxyContainer.classList.add('hidden');
+
+    allProxies = await loadProxiesFromApi();
+
+    populateCountryFilter();
+    setupProxyEventListeners();
+    applyFiltersAndRender();
+
+    loadingIndicator.classList.add('hidden');
+    proxyContainer.classList.remove('hidden');
+
+    const now = Date.now();
+    const staleProxies = allProxies.filter(p => !p.lastChecked || (now - new Date(p.lastChecked).getTime()) > CACHE_DURATION_MS);
+    if (staleProxies.length > 0) {
+        console.log(`Found ${staleProxies.length} stale proxies. Starting background health check...`);
+        checkProxies(staleProxies, false);
+    }
 }
 
-function getFlagEmoji(countryCode) {
-    if (!countryCode || countryCode === 'XX') return '🏳️';
-    const codePoints = countryCode.toUpperCase().split('').map(char => 127397 + char.charCodeAt());
-    return String.fromCodePoint(...codePoints);
+function setupProxyEventListeners() {
+    const addClickListener = (id, callback) => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.addEventListener('click', callback);
+        }
+    };
+
+    const addChangeListener = (id, callback) => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.addEventListener('change', callback);
+        }
+    };
+
+    const addInputListener = (id, callback) => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.addEventListener('input', callback);
+        }
+    };
+
+    addClickListener('refreshBtn', () => checkProxies(allProxies, true));
+    addChangeListener('countryFilter', applyFiltersAndRender);
+    addChangeListener('statusFilter', applyFiltersAndRender);
+    addInputListener('searchInput', applyFiltersAndRender);
+    addChangeListener('pageSize', (e) => {
+        pageSize = parseInt(e.target.value);
+        applyFiltersAndRender();
+    });
+    addClickListener('importBtn', () => document.getElementById('importModal').classList.remove('hidden'));
+    addClickListener('emptyStateImportBtn', () => document.getElementById('importModal').classList.remove('hidden'));
+    addClickListener('cancelImportBtn', () => document.getElementById('importModal').classList.add('hidden'));
+    addClickListener('confirmImportBtn', importProxies);
+    addClickListener('clearFiltersBtn', clearFilters);
+
+    if (document.getElementById('generateConfigModal')) {
+        setupGenerateConfigModalListeners();
+    }
 }
 
-function showToast(message, type = 'info') {
-    if (typeof Toastify === 'undefined') {
-        console.warn('Toastify library not loaded. Falling back to alert.');
-        alert(message);
-        return;
+// --- Filtering & Rendering ---
+function applyFiltersAndRender() {
+    applyFilters();
+    currentPage = 1;
+    renderProxies();
+    renderPagination();
+}
+
+function applyFilters() {
+    const countryFilterEl = document.getElementById('countryFilter');
+    const statusFilterEl = document.getElementById('statusFilter');
+    const searchInputEl = document.getElementById('searchInput');
+
+    const countryFilter = countryFilterEl ? countryFilterEl.value : '';
+    const statusFilter = statusFilterEl ? statusFilterEl.value : '';
+    const searchTerm = searchInputEl ? searchInputEl.value.toLowerCase() : '';
+
+    let tempProxies = [...allProxies];
+
+    if (searchTerm) {
+        tempProxies = tempProxies.filter(p => {
+            const countryName = getCountryName(p.country).toLowerCase();
+            const orgName = p.org ? p.org.toLowerCase() : '';
+            return p.proxyIP.includes(searchTerm) || countryName.includes(searchTerm) || orgName.includes(searchTerm);
+        });
+    }
+    if (countryFilter) {
+        tempProxies = tempProxies.filter(p => p.country === countryFilter);
+    }
+    if (statusFilter) {
+        tempProxies = tempProxies.filter(p => p.status === statusFilter);
     }
 
-    const color = {
-        success: 'linear-gradient(to right, #00b09b, #96c93d)',
-        error: 'linear-gradient(to right, #ff5f6d, #ffc371)',
-        warning: 'linear-gradient(to right, #f7b733, #fc4a1a)',
-        info: 'linear-gradient(to right, #00d2ff, #3a7bd5)'
-    }[type];
+    filteredProxies = tempProxies;
 
-    Toastify({
-        text: message,
-        duration: 3000,
-        close: true,
-        gravity: "top",
-        position: "right",
-        stopOnFocus: true,
-        style: {
-            background: color,
+    const clearFiltersBtn = document.getElementById('clearFiltersBtn');
+    if (clearFiltersBtn) {
+        if (countryFilter || statusFilter || searchTerm) {
+            clearFiltersBtn.classList.remove('hidden');
+        } else {
+            clearFiltersBtn.classList.add('hidden');
         }
-    }).showToast();
+    }
+
+    document.getElementById('totalProxies').textContent = filteredProxies.length;
 }
 
-function generateUUID() {
-    return crypto.randomUUID();
+function changePage(page) {
+    const totalPages = Math.ceil(filteredProxies.length / pageSize);
+    if (page < 1 || page > totalPages) return;
+    currentPage = page;
+    renderProxies();
+    renderPagination();
+    document.getElementById('proxyContainer').scrollIntoView({ behavior: 'smooth' });
+}
+window.changePage = changePage;
+
+// --- UI Rendering ---
+function populateCountryFilter() {
+    const countryFilter = document.getElementById('countryFilter');
+    const uniqueCountries = [...new Set(allProxies.map(p => p.country).filter(Boolean))].sort();
+    while (countryFilter.options.length > 1) countryFilter.remove(1);
+    uniqueCountries.forEach(code => {
+        const option = document.createElement('option');
+        option.value = code;
+        option.textContent = `${getFlagEmoji(code)} ${getCountryName(code)}`;
+        countryFilter.appendChild(option);
+    });
 }
 
-// =================================================================================
-// API and Health Check Functions
-// =================================================================================
+function renderProxies() {
+    const proxyContainer = document.getElementById('proxyContainer');
+    const emptyState = document.getElementById('emptyState');
+    emptyState.classList.toggle('hidden', filteredProxies.length > 0);
 
+    const startIndex = (currentPage - 1) * pageSize;
+    const paginatedProxies = filteredProxies.slice(startIndex, startIndex + pageSize);
+
+    document.getElementById('showingFrom').textContent = filteredProxies.length > 0 ? startIndex + 1 : 0;
+    document.getElementById('showingTo').textContent = startIndex + paginatedProxies.length;
+
+    proxyContainer.innerHTML = paginatedProxies.map(createProxyCardHTML).join('');
+
+    document.querySelectorAll('.generate-config-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            selectedProxy = allProxies.find(p => p.id === e.currentTarget.dataset.proxyId);
+            await updateWorkerDomainOptions();
+            document.getElementById('generateConfigModal').classList.remove('hidden');
+            document.getElementById('uuidInput').value = generateUUID();
+        });
+    });
+}
+
+function createProxyCardHTML(proxy) {
+    const now = Date.now();
+    const isStale = !proxy.lastChecked || (now - new Date(proxy.lastChecked).getTime()) >= CACHE_DURATION_MS;
+    const displayStatus = isStale ? 'unknown' : proxy.status;
+
+    let latencyClass = 'text-gray-500';
+    let latencyText = `${proxy.latency || 0}ms`;
+
+    if (proxy.status === 'testing') {
+        latencyClass = 'text-blue-500';
+        latencyText = '<i class="fas fa-spinner fa-spin mr-1"></i> Testing...';
+    } else if (displayStatus === 'offline' || displayStatus === 'unknown') {
+        latencyClass = 'text-red-500';
+        latencyText = isStale ? 'Stale' : 'Offline';
+    } else if (proxy.latency < 150) {
+        latencyClass = 'latency-low';
+    } else if (proxy.latency < 500) {
+        latencyClass = 'latency-medium';
+    } else {
+        latencyClass = 'latency-high';
+    }
+
+    return `
+        <div class="proxy-card bg-white rounded-lg shadow-md overflow-hidden slide-in">
+            <div class="p-4">
+                <div class="flex justify-between items-start mb-3">
+                    <div class="flex items-center min-w-0">
+                        <img src="https://hatscripts.github.io/circle-flags/flags/${(proxy.country || 'xx').toLowerCase()}.svg"
+                             alt="${proxy.country}" class="flag-icon mr-2 flex-shrink-0">
+                        <div class="min-w-0">
+                            <h3 class="font-semibold text-gray-900 truncate">${getCountryName(proxy.country)}</h3>
+                            <p class="text-xs text-gray-500 truncate">${proxy.org || 'Unknown Org'}</p>
+                        </div>
+                    </div>
+                    <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium
+                        ${displayStatus === 'online' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">
+                        <span class="w-2 h-2 rounded-full mr-1 ${displayStatus === 'online' ? 'bg-green-500' : (proxy.status === 'testing' ? 'bg-blue-500' : 'bg-yellow-500')}"></span>
+                        ${proxy.status === 'testing' ? 'testing' : displayStatus}
+                    </span>
+                </div>
+                <div class="mb-4 space-y-2">
+                    <div class="text-sm text-gray-600"><i class="fas fa-server mr-2"></i><span class="font-medium">${proxy.proxyIP}</span></div>
+                    <div class="text-sm text-gray-600"><i class="fas fa-network-wired mr-2"></i>Port: <span class="font-medium">${proxy.proxyPort}</span></div>
+                    <div class="text-sm ${latencyClass}"><i class="fas fa-clock mr-2"></i>Latency: <span class="font-medium">${latencyText}</span></div>
+                </div>
+                <button class="generate-config-btn w-full px-3 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
+                        data-proxy-id='${proxy.id}'>
+                    <i class="fas fa-cog mr-2"></i> Generate Config
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+function renderPagination() {
+    const pagination = document.getElementById('pagination');
+    const totalPages = Math.ceil(filteredProxies.length / pageSize);
+    pagination.innerHTML = '';
+    if (totalPages <= 1) return;
+
+    let paginationHTML = '';
+    const maxVisiblePages = 5;
+
+    paginationHTML += `<button class="px-3 py-1 rounded-md ${currentPage === 1 ? 'bg-gray-200 cursor-not-allowed' : 'bg-white border'}" ${currentPage === 1 ? 'disabled' : ''} onclick="changePage(${currentPage - 1})"><i class="fas fa-chevron-left"></i></button>`;
+
+    if (totalPages > maxVisiblePages + 2) {
+        let startPage = Math.max(2, currentPage - 2);
+        let endPage = Math.min(totalPages - 1, currentPage + 2);
+
+        paginationHTML += `<button class="px-3 py-1 rounded-md ${1 === currentPage ? 'bg-blue-600 text-white' : 'bg-white border'}" onclick="changePage(1)">1</button>`;
+        if (startPage > 2) paginationHTML += `<span class="px-3 py-1">...</span>`;
+
+        for (let i = startPage; i <= endPage; i++) {
+            paginationHTML += `<button class="px-3 py-1 rounded-md ${i === currentPage ? 'bg-blue-600 text-white' : 'bg-white border'}" onclick="changePage(${i})">${i}</button>`;
+        }
+
+        if (endPage < totalPages - 1) paginationHTML += `<span class="px-3 py-1">...</span>`;
+        paginationHTML += `<button class="px-3 py-1 rounded-md ${totalPages === currentPage ? 'bg-blue-600 text-white' : 'bg-white border'}" onclick="changePage(${totalPages})">${totalPages}</button>`;
+    } else {
+        for (let i = 1; i <= totalPages; i++) {
+            paginationHTML += `<button class="px-3 py-1 rounded-md ${i === currentPage ? 'bg-blue-600 text-white' : 'bg-white border'}" onclick="changePage(${i})">${i}</button>`;
+        }
+    }
+
+    paginationHTML += `<button class="px-3 py-1 rounded-md ${currentPage === totalPages ? 'bg-gray-200 cursor-not-allowed' : 'bg-white border'}" ${currentPage === totalPages ? 'disabled' : ''} onclick="changePage(${currentPage + 1})"><i class="fas fa-chevron-right"></i></button>`;
+
+    pagination.innerHTML = paginationHTML;
+}
+
+// --- API & Data Functions ---
 async function loadProxiesFromApi() {
     try {
         const response = await fetch('/api/proxies');
@@ -85,21 +291,17 @@ async function saveProxiesToApi(proxies) {
 }
 
 async function checkProxies(proxiesToCheck, isManualTrigger) {
-    if (isManualTrigger) {
-        proxiesToCheck.forEach(p => p.status = 'testing');
-    } else {
-        proxiesToCheck.forEach(p => {
-            const proxy = allProxies.find(ap => ap.id === p.id);
-            if (proxy) proxy.status = 'testing';
-        });
-    }
-    renderProxies(); // Show 'testing' status immediately
+    proxiesToCheck.forEach(p => {
+        const proxy = allProxies.find(ap => ap.id === p.id);
+        if (proxy) proxy.status = 'testing';
+    });
+    renderProxies();
 
-    const batchSize = 1000; // User-defined batch size
+    const batchSize = 1000;
     for (let i = 0; i < proxiesToCheck.length; i += batchSize) {
         const batch = proxiesToCheck.slice(i, i + batchSize);
         await processHealthCheckBatch(batch);
-        renderProxies(); // Re-render after each batch completes
+        renderProxies();
         await saveProxiesToApi(allProxies);
         window.dispatchEvent(new CustomEvent('proxyDataUpdated'));
     }
@@ -128,21 +330,19 @@ async function importProxies() {
         showToast('Please enter a URL.', 'warning');
         return;
     }
-
     showToast('Importing proxies...', 'info');
     try {
         const response = await fetch(proxyUrl);
         if (!response.ok) throw new Error(`Failed to fetch: ${response.status}`);
         const text = await response.text();
-        const lines = text.split('\n').filter(Boolean);
-        const newProxies = lines.map(line => {
+        const newProxies = text.split('\n').filter(Boolean).map(line => {
             const [proxyIP, proxyPort, country, org] = line.split(',');
             if (!proxyIP || !proxyPort) return null;
             return { id: generateUUID(), proxyIP, proxyPort, country: country || 'XX', org, status: 'unknown', latency: 0, lastChecked: null };
         }).filter(Boolean);
 
         if (newProxies.length === 0) {
-            return showToast('No valid proxies found in the provided list.', 'warning');
+            return showToast('No valid proxies found.', 'warning');
         }
 
         const existingProxyKeys = new Set(allProxies.map(p => `${p.proxyIP}:${p.proxyPort}`));
@@ -153,151 +353,18 @@ async function importProxies() {
         }
 
         allProxies.push(...uniqueNewProxies);
-
-        showToast(`Successfully imported ${uniqueNewProxies.length} new proxies. Starting health checks...`, 'success');
+        showToast(`Successfully imported ${uniqueNewProxies.length} new proxies.`, 'success');
         document.getElementById('importModal').classList.add('hidden');
-        populateCountryFilter();
+
+        applyFiltersAndRender();
         checkProxies(uniqueNewProxies, true);
     } catch (error) {
         console.error('Import Error:', error);
-        showToast('Failed to import proxies. Check the URL and format.', 'error');
+        showToast('Failed to import proxies. Check URL and format.', 'error');
     }
 }
 
-// =================================================================================
-// UI Rendering and DOM Manipulation Functions
-// =================================================================================
-
-function populateCountryFilter() {
-    const countryFilter = document.getElementById('countryFilter');
-    const uniqueCountries = [...new Set(allProxies.map(p => p.country).filter(Boolean))].sort();
-
-    while (countryFilter.options.length > 1) countryFilter.remove(1);
-
-    uniqueCountries.forEach(code => {
-        const option = document.createElement('option');
-        option.value = code;
-        option.textContent = `${getFlagEmoji(code)} ${getCountryName(code)}`;
-        countryFilter.appendChild(option);
-    });
-}
-
-function renderProxies() {
-    const proxyContainer = document.getElementById('proxyContainer');
-    const emptyState = document.getElementById('emptyState');
-    if (!proxyContainer || !emptyState) return;
-
-    emptyState.classList.toggle('hidden', filteredProxies.length > 0);
-
-    const startIndex = (currentPage - 1) * pageSize;
-    const endIndex = Math.min(startIndex + pageSize, filteredProxies.length);
-    const paginatedProxies = filteredProxies.slice(startIndex, endIndex);
-
-    document.getElementById('showingFrom').textContent = filteredProxies.length > 0 ? startIndex + 1 : 0;
-    document.getElementById('showingTo').textContent = endIndex;
-
-    proxyContainer.innerHTML = paginatedProxies.map(proxy => {
-        const now = Date.now();
-        const isStale = !proxy.lastChecked || (now - new Date(proxy.lastChecked).getTime()) >= CACHE_DURATION_MS;
-        const displayStatus = isStale ? 'unknown' : proxy.status;
-
-        let latencyClass = 'text-gray-500';
-        let latencyText = `${proxy.latency || 0}ms`;
-
-        if (proxy.status === 'testing') {
-            latencyClass = 'text-blue-500';
-            latencyText = '<i class="fas fa-spinner fa-spin mr-1"></i> Testing...';
-        } else if (displayStatus === 'offline' || displayStatus === 'unknown') {
-            latencyClass = 'text-red-500';
-            latencyText = isStale ? 'Stale' : 'Offline';
-        } else if (proxy.latency < 150) {
-            latencyClass = 'latency-low';
-        } else if (proxy.latency < 500) {
-            latencyClass = 'latency-medium';
-        } else {
-            latencyClass = 'latency-high';
-        }
-
-        return `
-            <div class="proxy-card bg-white rounded-lg shadow-md overflow-hidden slide-in">
-                <div class="p-4">
-                    <div class="flex justify-between items-start mb-3">
-                        <div class="flex items-center min-w-0">
-                            <img src="https://hatscripts.github.io/circle-flags/flags/${(proxy.country || 'xx').toLowerCase()}.svg"
-                                 alt="${proxy.country}" class="flag-icon mr-2 flex-shrink-0">
-                            <div class="min-w-0">
-                                <h3 class="font-semibold text-gray-900 truncate">${getCountryName(proxy.country)}</h3>
-                                <p class="text-xs text-gray-500 truncate">${proxy.org || 'Unknown Org'}</p>
-                            </div>
-                        </div>
-                        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium
-                            ${displayStatus === 'online' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">
-                            <span class="w-2 h-2 rounded-full mr-1 ${displayStatus === 'online' ? 'bg-green-500' : (proxy.status === 'testing' ? 'bg-blue-500' : 'bg-yellow-500')}"></span>
-                            ${proxy.status === 'testing' ? 'testing' : displayStatus}
-                        </span>
-                    </div>
-                    <div class="mb-4 space-y-2">
-                        <div class="text-sm text-gray-600"><i class="fas fa-server mr-2"></i><span class="font-medium">${proxy.proxyIP}</span></div>
-                        <div class="text-sm text-gray-600"><i class="fas fa-network-wired mr-2"></i>Port: <span class="font-medium">${proxy.proxyPort}</span></div>
-                        <div class="text-sm ${latencyClass}"><i class="fas fa-clock mr-2"></i>Latency: <span class="font-medium">${latencyText}</span></div>
-                    </div>
-                    <button class="generate-config-btn w-full px-3 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
-                            data-proxy-id='${proxy.id}'>
-                        <i class="fas fa-cog mr-2"></i> Generate Config
-                    </button>
-                </div>
-            </div>
-        `;
-    }).join('');
-
-    document.querySelectorAll('.generate-config-btn').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
-            selectedProxy = allProxies.find(p => p.id === e.currentTarget.dataset.proxyId);
-            await updateWorkerDomainOptions();
-            document.getElementById('generateConfigModal').classList.remove('hidden');
-            document.getElementById('uuidInput').value = generateUUID();
-        });
-    });
-}
-
-function renderPagination() {
-    const pagination = document.getElementById('pagination');
-    if (!pagination) return;
-    const totalPages = Math.ceil(filteredProxies.length / pageSize);
-    pagination.classList.toggle('hidden', totalPages <= 1);
-    if (totalPages <= 1) {
-        pagination.innerHTML = '';
-        return;
-    }
-    let paginationHTML = '';
-    const maxVisiblePages = 5;
-    paginationHTML += `<button class="px-3 py-1 rounded-md ${currentPage === 1 ? 'bg-gray-200 cursor-not-allowed' : 'bg-white border'}" ${currentPage === 1 ? 'disabled' : ''} onclick="changePage(${currentPage - 1})"><i class="fas fa-chevron-left"></i></button>`;
-    if (totalPages > maxVisiblePages + 2) {
-        let startPage = Math.max(2, currentPage - 1);
-        let endPage = Math.min(totalPages - 1, currentPage + 1);
-        if (currentPage < 4) {
-            startPage = 2;
-            endPage = Math.min(totalPages - 1, 1 + maxVisiblePages - 1);
-        } else if (currentPage > totalPages - 3) {
-            endPage = totalPages - 1;
-            startPage = Math.max(2, endPage - maxVisiblePages + 1);
-        }
-        paginationHTML += `<button class="px-3 py-1 rounded-md ${1 === currentPage ? 'bg-blue-600 text-white' : 'bg-white border'}" onclick="changePage(1)">1</button>`;
-        if (startPage > 2) paginationHTML += `<span class="px-3 py-1">...</span>`;
-        for (let i = startPage; i <= endPage; i++) {
-            paginationHTML += `<button class="px-3 py-1 rounded-md ${i === currentPage ? 'bg-blue-600 text-white' : 'bg-white border'}" onclick="changePage(${i})">${i}</button>`;
-        }
-        if (endPage < totalPages - 1) paginationHTML += `<span class="px-3 py-1">...</span>`;
-        paginationHTML += `<button class="px-3 py-1 rounded-md ${totalPages === currentPage ? 'bg-blue-600 text-white' : 'bg-white border'}" onclick="changePage(${totalPages})">${totalPages}</button>`;
-    } else {
-        for (let i = 1; i <= totalPages; i++) {
-            paginationHTML += `<button class="px-3 py-1 rounded-md ${i === currentPage ? 'bg-blue-600 text-white' : 'bg-white border'}" onclick="changePage(${i})">${i}</button>`;
-        }
-    }
-    paginationHTML += `<button class="px-3 py-1 rounded-md ${currentPage === totalPages ? 'bg-gray-200 cursor-not-allowed' : 'bg-white border'}" ${currentPage === totalPages ? 'disabled' : ''} onclick="changePage(${currentPage + 1})"><i class="fas fa-chevron-right"></i></button>`;
-    pagination.innerHTML = paginationHTML;
-}
-
+// --- Utilities & Modal Logic ---
 function clearFilters() {
     document.getElementById('countryFilter').value = '';
     document.getElementById('statusFilter').value = '';
@@ -329,9 +396,14 @@ function setupGenerateConfigModalListeners() {
     document.getElementById('confirmGenerateBtn').addEventListener('click', () => generateConfiguration(selectedVpnType, selectedPort, selectedFormat));
     document.getElementById('closeResultBtn').addEventListener('click', () => document.getElementById('resultModal').classList.add('hidden'));
     document.getElementById('copyResultBtn').addEventListener('click', copyResult);
-    document.querySelector('.vpn-type-btn[data-type="trojan"]').classList.add('bg-blue-600', 'text-white');
-    document.querySelector('.port-btn[data-port="443"]').classList.add('bg-blue-600', 'text-white');
-    document.querySelector('.format-btn[data-format="uri"]').classList.add('bg-blue-600', 'text-white');
+
+    // Set default selections
+    const vpnBtn = document.querySelector('.vpn-type-btn[data-type="trojan"]');
+    if (vpnBtn) vpnBtn.classList.add('bg-blue-600', 'text-white');
+    const portBtn = document.querySelector('.port-btn[data-port="443"]');
+    if (portBtn) portBtn.classList.add('bg-blue-600', 'text-white');
+    const formatBtn = document.querySelector('.format-btn[data-format="uri"]');
+    if (formatBtn) formatBtn.classList.add('bg-blue-600', 'text-white');
 }
 
 function generateConfiguration(selectedVpnType, selectedPort, selectedFormat) {
@@ -379,12 +451,10 @@ function copyResult() {
 async function updateWorkerDomainOptions() {
     const workerDomainSelect = document.getElementById('workerDomainSelect');
     if (!workerDomainSelect) return;
-
     try {
         const response = await fetch('/api/tunnels');
         if (!response.ok) throw new Error('Failed to fetch tunnels');
         const tunnels = await response.json();
-
         workerDomainSelect.innerHTML = '<option value="">Select a worker domain</option>';
         tunnels.forEach(tunnel => {
             const option = document.createElement('option');
@@ -398,113 +468,42 @@ async function updateWorkerDomainOptions() {
     }
 }
 
-// =================================================================================
-// Main Orchestration
-// =================================================================================
-
-// --- DOMContentLoaded Listener ---
-document.addEventListener('DOMContentLoaded', () => {
-    initializeProxyPage();
-});
-
-// --- Initialization & Setup ---
-async function initializeProxyPage() {
-    const loadingIndicator = document.getElementById('loadingIndicator');
-    const proxyContainer = document.getElementById('proxyContainer');
-    if(loadingIndicator) loadingIndicator.classList.remove('hidden');
-    if(proxyContainer) proxyContainer.classList.add('hidden');
-
-    allProxies = await loadProxiesFromApi();
-
-    populateCountryFilter();
-    setupProxyEventListeners();
-    applyFiltersAndRender();
-
-    if(loadingIndicator) loadingIndicator.classList.add('hidden');
-    if(proxyContainer) proxyContainer.classList.remove('hidden');
-
-    const now = Date.now();
-    const staleProxies = allProxies.filter(p => !p.lastChecked || (now - new Date(p.lastChecked).getTime()) > CACHE_DURATION_MS);
-    if (staleProxies.length > 0) {
-        console.log(`Found ${staleProxies.length} stale proxies. Starting automatic health check...`);
-        checkProxies(staleProxies, false);
-    }
+function getCountryName(code) {
+    const names = { 'US': 'United States', 'SG': 'Singapore', 'JP': 'Japan', 'DE': 'Germany', 'FR': 'France', 'XX': 'Unknown' };
+    return names[code] || code;
 }
 
-function setupProxyEventListeners() {
-    document.getElementById('refreshBtn')?.addEventListener('click', () => checkProxies(allProxies, true));
-    document.getElementById('countryFilter')?.addEventListener('change', applyFiltersAndRender);
-    document.getElementById('statusFilter')?.addEventListener('change', applyFiltersAndRender);
-    document.getElementById('searchInput')?.addEventListener('input', applyFiltersAndRender);
-    document.getElementById('pageSize')?.addEventListener('change', (e) => {
-        pageSize = parseInt(e.target.value);
-        applyFiltersAndRender();
-    });
-    document.getElementById('importBtn')?.addEventListener('click', () => document.getElementById('importModal').classList.remove('hidden'));
-    document.getElementById('emptyStateImportBtn')?.addEventListener('click', () => document.getElementById('importModal').classList.remove('hidden'));
-    document.getElementById('cancelImportBtn')?.addEventListener('click', () => document.getElementById('importModal').classList.add('hidden'));
-    document.getElementById('confirmImportBtn')?.addEventListener('click', importProxies);
-    document.getElementById('clearFiltersBtn')?.addEventListener('click', clearFilters);
-    setupGenerateConfigModalListeners();
+function getFlagEmoji(countryCode) {
+    if (!countryCode || countryCode === 'XX') return '🏳️';
+    const codePoints = countryCode.toUpperCase().split('').map(char => 127397 + char.charCodeAt());
+    return String.fromCodePoint(...codePoints);
 }
 
-// --- Filtering & Rendering Orchestration ---
-function applyFiltersAndRender() {
-    applyFilters();
-    currentPage = 1;
-    renderProxies();
-    renderPagination();
-}
-
-function applyFilters() {
-    const countryFilter = document.getElementById('countryFilter').value;
-    const statusFilter = document.getElementById('statusFilter').value;
-    const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-
-    let tempProxies = [...allProxies];
-
-    if (searchTerm) {
-        tempProxies = tempProxies.filter(p => {
-            const countryName = getCountryName(p.country).toLowerCase();
-            const orgName = p.org ? p.org.toLowerCase() : '';
-            return p.proxyIP.includes(searchTerm) ||
-                   countryName.includes(searchTerm) ||
-                   orgName.includes(searchTerm);
-        });
+function showToast(message, type = 'info') {
+    if (typeof Toastify === 'undefined') {
+        console.warn('Toastify library not loaded. Falling back to alert.');
+        alert(message);
+        return;
     }
-
-    if (countryFilter) {
-        tempProxies = tempProxies.filter(p => p.country === countryFilter);
-    }
-
-    if (statusFilter) {
-        tempProxies = tempProxies.filter(p => p.status === statusFilter);
-    }
-
-    filteredProxies = tempProxies;
-
-    const clearFiltersBtn = document.getElementById('clearFiltersBtn');
-    if (clearFiltersBtn) {
-        if (countryFilter || statusFilter || searchTerm) {
-            clearFiltersBtn.classList.remove('hidden');
-        } else {
-            clearFiltersBtn.classList.add('hidden');
+    const color = {
+        success: 'linear-gradient(to right, #00b09b, #96c93d)',
+        error: 'linear-gradient(to right, #ff5f6d, #ffc371)',
+        warning: 'linear-gradient(to right, #f7b733, #fc4a1a)',
+        info: 'linear-gradient(to right, #00d2ff, #3a7bd5)'
+    }[type];
+    Toastify({
+        text: message,
+        duration: 3000,
+        close: true,
+        gravity: "top",
+        position: "right",
+        stopOnFocus: true,
+        style: {
+            background: color,
         }
-    }
-
-    const totalProxiesSpan = document.getElementById('totalProxies');
-    if (totalProxiesSpan) {
-        totalProxiesSpan.textContent = filteredProxies.length;
-    }
+    }).showToast();
 }
 
-function changePage(page) {
-    const totalPages = Math.ceil(filteredProxies.length / pageSize);
-    if (page < 1 || page > totalPages) return;
-    currentPage = page;
-    renderProxies();
-    renderPagination();
-    document.getElementById('proxyContainer').scrollIntoView({ behavior: 'smooth' });
+function generateUUID() {
+    return crypto.randomUUID();
 }
-
-window.changePage = changePage;

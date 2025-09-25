@@ -186,7 +186,6 @@
             background-color: #4a5568;
         }
     </style>
-    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
 </head>
 <body class="bg-gray-50">
     <!-- Top Navigation Bar -->
@@ -218,10 +217,10 @@
                 </div>
                 
                 <!-- Right Side Controls -->
-                <div class="flex items-center space-x-4 flex-wrap justify-end">
+                <div class="flex items-center space-x-4 justify-end">
                     <!-- Search Bar -->
                     <div class="hidden md:block relative">
-                        <input type="text" id="searchInput" placeholder="Search proxies..." class="w-64 pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <input type="text" placeholder="Search proxies..." class="w-64 pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
                         <i class="fas fa-search absolute left-3 top-3 text-gray-400"></i>
                     </div>
                     
@@ -345,9 +344,6 @@
                     </div>
                     <button id="refreshBtn" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
                         <i class="fas fa-sync-alt mr-2"></i> Refresh
-                    </button>
-                    <button id="clearFiltersBtn" class="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors hidden">
-                        <i class="fas fa-times mr-2"></i> Clear
                     </button>
                     <button id="importBtn" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors">
                         <i class="fas fa-download mr-2"></i> Import
@@ -556,9 +552,6 @@
 
     <script src="js/config.js"></script>
     <script src="js/app.js"></script>
-
     <script src="js/proxies.js"></script>
-
-    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
 </body>
 </html>
