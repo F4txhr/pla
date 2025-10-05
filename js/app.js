@@ -87,20 +87,6 @@ async function loadTunnelsFromApi() {
     }
 }
 
-async function saveTunnelsToApi() {
-    try {
-        await fetch('/api/tunnels', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(tunnels)
-        });
-    } catch (error) {
-        console.error('Error saving tunnels:', error);
-        // Optionally, show an error message to the user here
-    }
-}
-
-
 async function setupTunnelManagement() {
     await loadTunnelsFromApi();
 
@@ -168,65 +154,120 @@ async function saveTunnel(e) {
     const domain = document.getElementById('tunnelDomain').value;
     let tunnelToCheck = null;
 
-    if (editingTunnelId) {
-        const index = tunnels.findIndex(t => t.id === editingTunnelId);
-        if (index !== -1) {
-            tunnels[index] = { ...tunnels[index], name, domain };
-            tunnelToCheck = tunnels[index]; // Get the updated tunnel
+    try {
+        if (editingTunnelId) {
+            // EDIT PATH: Use the new, efficient update endpoint.
+            const response = await fetch('/api/tunnels/update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: editingTunnelId, name, domain })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to update tunnel');
+            }
+
+            const updatedTunnel = await response.json();
+            const index = tunnels.findIndex(t => t.id === updatedTunnel.id);
+            if (index !== -1) {
+                tunnels[index] = updatedTunnel;
+            }
+            tunnelToCheck = updatedTunnel;
+        } else {
+            // CREATE PATH: This uses the new, efficient endpoint.
+            const response = await fetch('/api/tunnels/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, domain })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to create tunnel');
+            }
+
+            const createdTunnel = await response.json();
+            tunnels.push(createdTunnel);
+            tunnelToCheck = createdTunnel;
         }
-    } else {
-        const newTunnel = { id: crypto.randomUUID(), name, domain, status: 'unknown' };
-        tunnels.push(newTunnel);
-        tunnelToCheck = newTunnel; // Get the new tunnel
-    }
 
-    await saveTunnelsToApi();
-    renderTunnelList();
+        renderTunnelList();
+        document.getElementById('tunnelModal').classList.add('hidden');
 
-    document.getElementById('tunnelModal').classList.add('hidden');
-
-    // If a tunnel was created or updated, check its status.
-    if (tunnelToCheck) {
-        await checkSingleTunnelStatus(tunnelToCheck);
+        // If a tunnel was created or updated, check its status.
+        if (tunnelToCheck) {
+            await checkSingleTunnelStatus(tunnelToCheck);
+        }
+    } catch (error) {
+        console.error('Error saving tunnel:', error);
+        alert(`Error: ${error.message}`); // Provide feedback to the user
     }
 }
 
 function editTunnel(tunnelId) {
-    const tunnel = tunnels.find(t => t.id === tunnelId);
-    if (!tunnel) return;
-    editingTunnelId = tunnelId;
+    // The ID from the onclick attribute is a string, but the ID in the `tunnels` array is a number.
+    const idAsNumber = parseInt(tunnelId, 10);
+    const tunnel = tunnels.find(t => t.id === idAsNumber);
+    if (!tunnel) {
+        console.error('Tunnel not found for editing:', tunnelId);
+        return;
+    }
+
+    editingTunnelId = idAsNumber; // Store the ID as a number
     document.getElementById('tunnelModalTitle').textContent = 'Edit Tunnel';
-    document.getElementById('tunnelId').value = tunnel.id;
     document.getElementById('tunnelName').value = tunnel.name;
     document.getElementById('tunnelDomain').value = tunnel.domain;
     document.getElementById('tunnelModal').classList.remove('hidden');
 }
 
 function confirmDeleteTunnel(tunnelId) {
+    // The ID from the onclick attribute is a string.
+    const idAsNumber = parseInt(tunnelId, 10);
     if (confirm('Are you sure you want to delete this tunnel?')) {
-        deleteTunnel(tunnelId);
+        deleteTunnel(idAsNumber);
     }
 }
 
 async function deleteTunnel(tunnelId) {
-    tunnels = tunnels.filter(t => t.id !== tunnelId);
-    await saveTunnelsToApi();
-    renderTunnelList();
+    try {
+        const response = await fetch('/api/tunnels/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: tunnelId })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to delete tunnel');
+        }
+
+        // On successful deletion from the DB, remove the tunnel from the local array.
+        tunnels = tunnels.filter(t => t.id !== tunnelId);
+        renderTunnelList();
+
+    } catch (error) {
+        console.error('Error deleting tunnel:', error);
+        alert(`Error: ${error.message}`);
+    }
 }
 
 async function checkSingleTunnelStatus(tunnel) {
+    // This check is temporary and only updates the UI state.
+    // The tunnel status is not persisted in the database.
     try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000);
-        const response = await fetch(`https://${tunnel.domain}`, { signal: controller.signal, mode: 'no-cors' });
+        // We use 'no-cors' as a simple way to check if the domain is reachable.
+        // A success response here doesn't guarantee the service is the correct one,
+        // but a failure strongly indicates an issue.
+        await fetch(`https://${tunnel.domain}`, { signal: controller.signal, mode: 'no-cors' });
         clearTimeout(timeoutId);
-        // For 'no-cors', we can't read response status, so we assume success if it doesn't throw.
-        // This is a basic check; a more robust solution would involve a server-side check.
         tunnel.status = 'online';
     } catch (error) {
         tunnel.status = 'offline';
     }
-    await saveTunnelsToApi();
+    // Re-render the list to show the updated status.
     renderTunnelList();
 }
 
