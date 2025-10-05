@@ -1,5 +1,5 @@
 // =================================================================================
-// Dashboard Page Logic (Refactored to use APIs)
+// Dashboard Page Logic (Refactored to use a single /api/stats endpoint)
 // =================================================================================
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -7,62 +7,88 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /**
- * Sets up the dashboard, loads initial data, and sets up listeners.
+ * Sets up the dashboard, loads initial data, and sets up periodic refreshes.
  */
 function initializeDashboard() {
     // Initial load of all stats
-    updateAllStats();
+    updateDashboardStats();
 
-    // Listen for updates from the proxy page to refresh proxy-related stats
-    window.addEventListener('proxyDataUpdated', () => {
-        console.log('Dashboard received proxyDataUpdated event. Refreshing stats.');
-        updateProxyStats();
-    });
-
-    // Periodically refresh all stats to catch any other changes
-    setInterval(updateAllStats, 60000); // Refresh every 60 seconds
+    // Periodically refresh all stats
+    setInterval(updateDashboardStats, 60000); // Refresh every 60 seconds
 }
 
 /**
- * Fetches data from all APIs and updates the entire dashboard.
+ * Fetches aggregated data from the /api/stats endpoint and updates the dashboard.
  */
-async function updateAllStats() {
-    console.log('Updating all dashboard stats...');
+async function updateDashboardStats() {
+    console.log('Fetching all dashboard stats from /api/stats...');
     try {
-        const [proxies, tunnels, accounts] = await Promise.all([
-            fetch('/api/proxies').then(res => res.json()),
-            fetch('/api/tunnels').then(res => res.json()),
-            fetch('/api/accounts').then(res => res.json())
-        ]);
+        const response = await fetch('/api/stats');
+        if (!response.ok) {
+            throw new Error(`API responded with ${response.status}`);
+        }
+        const stats = await response.json();
 
-        const onlineProxiesCount = proxies.filter(p => p.status === 'online').length;
-        const activeTunnelsCount = tunnels.filter(t => t.status === 'online').length;
+        // Animate the numerical values
+        animateValue('totalProxies', stats.totalProxies);
+        animateValue('onlineProxies', stats.onlineProxies);
+        animateValue('activeTunnels', stats.activeTunnels);
+        animateValue('totalAccounts', stats.totalAccounts);
 
-        animateValue('totalProxies', proxies.length);
-        animateValue('onlineProxies', onlineProxiesCount);
-        animateValue('activeTunnels', activeTunnelsCount);
-        animateValue('totalAccounts', accounts.length);
+        // Update the last updated timestamp
+        updateLastUpdated(stats.lastUpdated);
 
     } catch (error) {
-        console.error('Failed to update all dashboard stats:', error);
+        console.error('Failed to update dashboard stats:', error);
+        document.getElementById('lastUpdated').textContent = 'Error';
     }
 }
 
 /**
- * Fetches only the proxy data to update proxy-related cards.
- * This is called by the event listener for a more responsive UI.
+ * Updates the 'Last Updated' card with a human-readable time.
+ * @param {string | null} isoTimestamp - The ISO 8601 timestamp string from the API.
  */
-async function updateProxyStats() {
-    console.log('Updating only proxy stats...');
-    try {
-        const proxies = await fetch('/api/proxies').then(res => res.json());
-        const onlineProxiesCount = proxies.filter(p => p.status === 'online').length;
+function updateLastUpdated(isoTimestamp) {
+    const element = document.getElementById('lastUpdated');
+    if (!element) return;
 
-        animateValue('totalProxies', proxies.length);
-        animateValue('onlineProxies', onlineProxiesCount);
-    } catch (error) {
-        console.error('Failed to update proxy stats:', error);
+    if (!isoTimestamp) {
+        element.textContent = 'Never';
+        return;
     }
+
+    element.textContent = formatTimeAgo(isoTimestamp);
+    element.dataset.fullTimestamp = isoTimestamp;
+}
+
+/**
+ * Converts an ISO 8601 timestamp into a relative "time ago" string.
+ * @param {string} isoTimestamp - The ISO 8601 timestamp.
+ * @returns {string} A human-readable relative time string (e.g., "5 minutes ago").
+ */
+function formatTimeAgo(isoTimestamp) {
+    const now = new Date();
+    const past = new Date(isoTimestamp);
+    const seconds = Math.floor((now - past) / 1000);
+
+    let interval = seconds / 31536000; // years
+    if (interval > 1) return Math.floor(interval) + " years ago";
+
+    interval = seconds / 2592000; // months
+    if (interval > 1) return Math.floor(interval) + " months ago";
+
+    interval = seconds / 86400; // days
+    if (interval > 1) return Math.floor(interval) + " days ago";
+
+    interval = seconds / 3600; // hours
+    if (interval > 1) return Math.floor(interval) + " hours ago";
+
+    interval = seconds / 60; // minutes
+    if (interval > 1) return Math.floor(interval) + " minutes ago";
+
+    if (seconds < 10) return "Just now";
+
+    return Math.floor(seconds) + " seconds ago";
 }
 
 /**
@@ -75,6 +101,11 @@ function animateValue(elementId, endValue) {
     if (!element) return;
 
     const startValue = parseInt(element.textContent) || 0;
+    if (startValue === endValue) {
+        element.textContent = endValue;
+        return;
+    }
+
     const duration = 1000; // Animation duration in milliseconds
     const startTime = performance.now();
 
@@ -82,11 +113,12 @@ function animateValue(elementId, endValue) {
         const elapsed = currentTime - startTime;
         const progress = Math.min(elapsed / duration, 1);
         const currentValue = Math.floor(startValue + (endValue - startValue) * progress);
-
         element.textContent = currentValue;
 
         if (progress < 1) {
             requestAnimationFrame(update);
+        } else {
+            element.textContent = endValue; // Ensure the final value is exact
         }
     }
 
