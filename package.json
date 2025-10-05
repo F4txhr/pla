@@ -1,14 +1,18 @@
 {
-  "name": "vpn-manager",
+  "name": "vpn-manager-vercel",
   "version": "1.0.0",
-  "description": "A simple VPN management dashboard.",
+  "description": "A VPN management dashboard deployed on Vercel with Supabase.",
   "private": true,
   "scripts": {
+    "dev": "vercel dev",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@cloudflare/kv-asset-handler": "^0.3.0"
+    "@supabase/supabase-js": "^2.38.4"
+  },
+  "devDependencies": {
+    "vercel": "^32.5.0"
   }
 }
