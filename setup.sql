@@ -18,6 +18,10 @@ CREATE TABLE IF NOT EXISTS proxies (
     proxy_data TEXT NOT NULL UNIQUE,
     -- 'status' can be 'online', 'offline', 'unchecked', etc.
     status VARCHAR(50) DEFAULT 'unchecked' NOT NULL,
+    -- The latency of the proxy in milliseconds
+    latency INT DEFAULT 0,
+    -- The timestamp of the last health check
+    lastChecked TIMESTAMPTZ,
     -- Automatically record when the proxy was added
     created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
@@ -109,6 +113,14 @@ CREATE POLICY "Allow full access for admin" ON proxies FOR ALL USING (true);
 CREATE POLICY "Allow full access for admin" ON accounts FOR ALL USING (true);
 CREATE POLICY "Allow full access for admin" ON tunnels FOR ALL USING (true);
 CREATE POLICY "Allow full access for admin" ON metadata FOR ALL USING (true);
+
+-- =================================================================
+--  Updates for existing schemas
+--  Run these commands if you have already set up the tables
+--  and need to add the new columns for proxy testing.
+-- =================================================================
+ALTER TABLE proxies ADD COLUMN IF NOT EXISTS latency INT DEFAULT 0;
+ALTER TABLE proxies ADD COLUMN IF NOT EXISTS lastChecked TIMESTAMPTZ;
 
 -- =================================================================
 --  End of Script
