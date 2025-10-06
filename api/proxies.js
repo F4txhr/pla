@@ -15,14 +15,28 @@ export default async function handler(request, response) {
 
 async function handleGet(request, response) {
     try {
-        const { data, error } = await supabase
-            .from('proxies')
-            .select('id, proxy_data, status, latency, last_checked, country, org, created_at')
-            .range(0, 4999); // Override default 1000-row limit
+        let allData = [];
+        let page = 0;
+        const pageSize = 1000; // Supabase's default limit
+        let moreData = true;
 
-        if (error) throw error;
+        while(moreData) {
+            const { data, error } = await supabase
+                .from('proxies')
+                .select('id, proxy_data, status, latency, last_checked, country, org, created_at')
+                .range(page * pageSize, (page + 1) * pageSize - 1);
 
-        return response.status(200).json(data);
+            if (error) throw error;
+
+            if (data && data.length > 0) {
+                allData = allData.concat(data);
+                page++;
+            } else {
+                moreData = false;
+            }
+        }
+
+        return response.status(200).json(allData);
     } catch (error) {
         console.error('Error fetching proxies:', error);
         return response.status(500).json({ error: 'Failed to fetch proxies.', details: error.message });
