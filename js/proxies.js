@@ -353,6 +353,7 @@ async function processHealthCheckBatch(batch) {
 
             updatesForApi.push({
                 id: proxyToUpdate.id,
+                proxy_data: proxyToUpdate.proxy_data, // Ensure proxy_data is included in the update
                 status: proxyToUpdate.status,
                 latency: proxyToUpdate.latency,
                 last_checked: proxyToUpdate.last_checked
