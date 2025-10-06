@@ -1,5 +1,5 @@
 // =================================================================================
-// Proxies Page Logic
+// Proxies Page Logic (Final Corrected Version)
 // =================================================================================
 
 // --- Page State ---
@@ -11,7 +11,6 @@ let selectedProxy = null;
 
 // --- DOMContentLoaded Listener ---
 document.addEventListener('DOMContentLoaded', () => {
-    // Only initialize if we are on the proxies page
     if (document.getElementById('proxyContainer')) {
         initializeProxyPage();
     }
@@ -32,7 +31,9 @@ async function initializeProxyPage() {
     applyFiltersAndRender();
 
     loadingIndicator.classList.add('hidden');
-    proxyContainer.classList.remove('hidden');
+    if (allProxies.length > 0) {
+        proxyContainer.classList.remove('hidden');
+    }
 
     const now = Date.now();
     const staleProxies = allProxies.filter(p => !p.last_checked || (now - new Date(p.last_checked).getTime()) > CACHE_DURATION_MS);
@@ -45,29 +46,16 @@ async function initializeProxyPage() {
 function setupProxyEventListeners() {
     const addClickListener = (id, callback) => {
         const element = document.getElementById(id);
-        if (element) {
-            element.addEventListener('click', callback);
-        }
+        if (element) element.addEventListener('click', callback);
     };
-
     const addChangeListener = (id, callback) => {
         const element = document.getElementById(id);
-        if (element) {
-            element.addEventListener('change', callback);
-        }
-    };
-
-    const addInputListener = (id, callback) => {
-        const element = document.getElementById(id);
-        if (element) {
-            element.addEventListener('input', callback);
-        }
+        if (element) element.addEventListener('change', callback);
     };
 
     addClickListener('refreshBtn', () => checkProxies(allProxies, true));
     addChangeListener('countryFilter', applyFiltersAndRender);
     addChangeListener('statusFilter', applyFiltersAndRender);
-    addInputListener('searchInput', applyFiltersAndRender);
     addChangeListener('pageSize', (e) => {
         pageSize = parseInt(e.target.value);
         applyFiltersAndRender();
@@ -76,11 +64,6 @@ function setupProxyEventListeners() {
     addClickListener('emptyStateImportBtn', () => document.getElementById('importModal').classList.remove('hidden'));
     addClickListener('cancelImportBtn', () => document.getElementById('importModal').classList.add('hidden'));
     addClickListener('confirmImportBtn', importProxies);
-    addClickListener('clearFiltersBtn', clearFilters);
-
-    if (document.getElementById('generateConfigModal')) {
-        setupGenerateConfigModalListeners();
-    }
 }
 
 // --- Filtering & Rendering ---
@@ -92,41 +75,17 @@ function applyFiltersAndRender() {
 }
 
 function applyFilters() {
-    const countryFilterEl = document.getElementById('countryFilter');
-    const statusFilterEl = document.getElementById('statusFilter');
-    const searchInputEl = document.getElementById('searchInput');
-
-    const countryFilter = countryFilterEl ? countryFilterEl.value : '';
-    const statusFilter = statusFilterEl ? statusFilterEl.value : '';
-    const searchTerm = searchInputEl ? searchInputEl.value.toLowerCase() : '';
+    const countryFilter = document.getElementById('countryFilter').value;
+    const statusFilter = document.getElementById('statusFilter').value;
 
     let tempProxies = [...allProxies];
-
-    if (searchTerm) {
-        tempProxies = tempProxies.filter(p => {
-            const countryName = getCountryName(p.country).toLowerCase();
-            const orgName = p.org ? p.org.toLowerCase() : '';
-            return p.proxyIP.includes(searchTerm) || countryName.includes(searchTerm) || orgName.includes(searchTerm);
-        });
-    }
     if (countryFilter) {
         tempProxies = tempProxies.filter(p => p.country === countryFilter);
     }
     if (statusFilter) {
         tempProxies = tempProxies.filter(p => p.status === statusFilter);
     }
-
     filteredProxies = tempProxies;
-
-    const clearFiltersBtn = document.getElementById('clearFiltersBtn');
-    if (clearFiltersBtn) {
-        if (countryFilter || statusFilter || searchTerm) {
-            clearFiltersBtn.classList.remove('hidden');
-        } else {
-            clearFiltersBtn.classList.add('hidden');
-        }
-    }
-
     document.getElementById('totalProxies').textContent = filteredProxies.length;
 }
 
@@ -156,24 +115,18 @@ function populateCountryFilter() {
 function renderProxies() {
     const proxyContainer = document.getElementById('proxyContainer');
     const emptyState = document.getElementById('emptyState');
-    emptyState.classList.toggle('hidden', filteredProxies.length > 0);
+    const hasProxies = filteredProxies.length > 0;
+
+    emptyState.classList.toggle('hidden', hasProxies);
+    proxyContainer.classList.toggle('hidden', !hasProxies);
 
     const startIndex = (currentPage - 1) * pageSize;
     const paginatedProxies = filteredProxies.slice(startIndex, startIndex + pageSize);
 
-    document.getElementById('showingFrom').textContent = filteredProxies.length > 0 ? startIndex + 1 : 0;
+    document.getElementById('showingFrom').textContent = hasProxies ? startIndex + 1 : 0;
     document.getElementById('showingTo').textContent = startIndex + paginatedProxies.length;
 
     proxyContainer.innerHTML = paginatedProxies.map(createProxyCardHTML).join('');
-
-    document.querySelectorAll('.generate-config-btn').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
-            selectedProxy = allProxies.find(p => p.id === e.currentTarget.dataset.proxyId);
-            await updateWorkerDomainOptions();
-            document.getElementById('generateConfigModal').classList.remove('hidden');
-            document.getElementById('uuidInput').value = generateUUID();
-        });
-    });
 }
 
 function createProxyCardHTML(proxy) {
@@ -203,15 +156,13 @@ function createProxyCardHTML(proxy) {
             <div class="p-4">
                 <div class="flex justify-between items-start mb-3">
                     <div class="flex items-center min-w-0">
-                        <img src="https://hatscripts.github.io/circle-flags/flags/${(proxy.country || 'xx').toLowerCase()}.svg"
-                             alt="${proxy.country}" class="flag-icon mr-2 flex-shrink-0">
+                        <img src="https://hatscripts.github.io/circle-flags/flags/${(proxy.country || 'xx').toLowerCase()}.svg" alt="${proxy.country}" class="flag-icon mr-2 flex-shrink-0">
                         <div class="min-w-0">
                             <h3 class="font-semibold text-gray-900 truncate">${getCountryName(proxy.country)}</h3>
                             <p class="text-xs text-gray-500 truncate">${proxy.org || 'Unknown Org'}</p>
                         </div>
                     </div>
-                    <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium
-                        ${displayStatus === 'online' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">
+                    <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${displayStatus === 'online' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">
                         <span class="w-2 h-2 rounded-full mr-1 ${displayStatus === 'online' ? 'bg-green-500' : (proxy.status === 'testing' ? 'bg-blue-500' : 'bg-yellow-500')}"></span>
                         ${proxy.status === 'testing' ? 'testing' : displayStatus}
                     </span>
@@ -221,10 +172,6 @@ function createProxyCardHTML(proxy) {
                     <div class="text-sm text-gray-600"><i class="fas fa-network-wired mr-2"></i>Port: <span class="font-medium">${proxy.proxyPort}</span></div>
                     <div class="text-sm ${latencyClass}"><i class="fas fa-clock mr-2"></i>Latency: <span class="font-medium">${latencyText}</span></div>
                 </div>
-                <button class="generate-config-btn w-full px-3 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
-                        data-proxy-id='${proxy.id}'>
-                    <i class="fas fa-cog mr-2"></i> Generate Config
-                </button>
             </div>
         </div>
     `;
@@ -244,14 +191,11 @@ function renderPagination() {
     if (totalPages > maxVisiblePages + 2) {
         let startPage = Math.max(2, currentPage - 2);
         let endPage = Math.min(totalPages - 1, currentPage + 2);
-
         paginationHTML += `<button class="px-3 py-1 rounded-md ${1 === currentPage ? 'bg-blue-600 text-white' : 'bg-white border'}" onclick="changePage(1)">1</button>`;
         if (startPage > 2) paginationHTML += `<span class="px-3 py-1">...</span>`;
-
         for (let i = startPage; i <= endPage; i++) {
             paginationHTML += `<button class="px-3 py-1 rounded-md ${i === currentPage ? 'bg-blue-600 text-white' : 'bg-white border'}" onclick="changePage(${i})">${i}</button>`;
         }
-
         if (endPage < totalPages - 1) paginationHTML += `<span class="px-3 py-1">...</span>`;
         paginationHTML += `<button class="px-3 py-1 rounded-md ${totalPages === currentPage ? 'bg-blue-600 text-white' : 'bg-white border'}" onclick="changePage(${totalPages})">${totalPages}</button>`;
     } else {
@@ -261,7 +205,6 @@ function renderPagination() {
     }
 
     paginationHTML += `<button class="px-3 py-1 rounded-md ${currentPage === totalPages ? 'bg-gray-200 cursor-not-allowed' : 'bg-white border'}" ${currentPage === totalPages ? 'disabled' : ''} onclick="changePage(${currentPage + 1})"><i class="fas fa-chevron-right"></i></button>`;
-
     pagination.innerHTML = paginationHTML;
 }
 
@@ -269,24 +212,17 @@ function renderPagination() {
 async function loadProxiesFromApi() {
     try {
         const response = await fetch('/api/proxies');
-        if (!response.ok) throw new Error('Failed to fetch proxy data from API.');
+        if (!response.ok) throw new Error(`Failed to fetch proxy data from API. Status: ${response.status}`);
         const proxies = await response.json();
-        // The API returns 'proxy_data', but we need 'proxyIP' and 'proxyPort' for testing.
         return proxies.map(p => {
-            try {
-                const parts = p.proxy_data.split(':');
-                p.proxyIP = parts[0];
-                p.proxyPort = parts[1];
-            } catch (e) {
-                p.proxyIP = 'Error';
-                p.proxyPort = 'Error';
-            }
-            if (!p.status) p.status = 'unknown';
+            const parts = p.proxy_data.split(':');
+            p.proxyIP = parts[0];
+            p.proxyPort = parts[1];
             return p;
         });
     } catch (error) {
         console.error(error);
-        showToast('Could not load proxy data. Please try again later.', 'error');
+        showToast('Could not load proxy data.', 'error');
         return [];
     }
 }
@@ -303,7 +239,6 @@ async function saveProxyStatusUpdates(updates) {
             const errorData = await response.json();
             throw new Error(errorData.details || 'Failed to save proxy statuses.');
         }
-        console.log('Successfully saved proxy status updates.');
     } catch (error) {
         console.error('Failed to save proxy status updates to API:', error);
         showToast('Could not save proxy test results.', 'error');
@@ -311,22 +246,25 @@ async function saveProxyStatusUpdates(updates) {
 }
 
 async function checkProxies(proxiesToCheck, isManualTrigger) {
+    if (isManualTrigger) {
+        showToast(`Testing ${proxiesToCheck.length} proxies...`, 'info');
+    }
     proxiesToCheck.forEach(p => {
         const proxy = allProxies.find(ap => ap.id === p.id);
         if (proxy) proxy.status = 'testing';
     });
-    renderProxies(); // Initial render to show "testing" status
+    renderProxies();
 
-    const batchSize = 10; // Smaller batch size for better UI responsiveness
+    const batchSize = 10;
     for (let i = 0; i < proxiesToCheck.length; i += batchSize) {
         const batch = proxiesToCheck.slice(i, i + batchSize);
         const updates = await processHealthCheckBatch(batch);
-        renderProxies(); // Re-render after each batch is processed
-        await saveProxyStatusUpdates(updates); // Save the updates to the database
-        window.dispatchEvent(new CustomEvent('proxyDataUpdated'));
+        await saveProxyStatusUpdates(updates);
+        renderProxies();
     }
-    console.log('Health check cycle complete.');
-    showToast('All proxies have been tested.', 'success');
+    if (isManualTrigger) {
+        showToast('All proxies have been tested.', 'success');
+    }
 }
 
 async function processHealthCheckBatch(batch) {
@@ -363,9 +301,8 @@ async function processHealthCheckBatch(batch) {
 
 async function importProxies() {
     const proxyUrl = document.getElementById('proxyUrlInput').value.trim();
-    if (!proxyUrl) {
-        return showToast('Please enter a URL.', 'warning');
-    }
+    if (!proxyUrl) return showToast('Please enter a URL.', 'warning');
+
     showToast('Importing proxies...', 'info');
 
     try {
@@ -374,24 +311,21 @@ async function importProxies() {
         const text = await response.text();
         const lines = text.split('\n').filter(Boolean);
 
-        if (lines.length === 0) {
-            return showToast('No proxies found in the provided URL.', 'warning');
-        }
+        if (lines.length === 0) return showToast('No proxies found in the provided URL.', 'warning');
 
-        // Final Correct Parsing Logic
+        // Final, Corrected Parsing Logic
         // Format: IP,PORT,COUNTRY,ORG...
         const newProxyObjects = lines.map(line => {
             const parts = line.split(',');
             if (parts.length < 4) return null;
 
-            const proxy_data = `${parts[0]}:${parts[1]}`; // Combine IP and Port
+            const proxy_data = `${parts[0]}:${parts[1]}`;
             const country = parts[2] || 'XX';
-            const org = parts.slice(3).join(',') || 'Unknown Org'; // All remaining parts are the org
+            const org = parts.slice(3).join(',').trim() || 'Unknown Org';
 
             return { proxy_data, country, org };
         }).filter(Boolean);
 
-        // Step 2: Filter out proxies that already exist
         const existingProxySet = new Set(allProxies.map(p => p.proxy_data));
         const uniqueNewProxies = newProxyObjects.filter(p => !existingProxySet.has(p.proxy_data));
 
@@ -400,7 +334,6 @@ async function importProxies() {
             return showToast('All proxies from the list are already in your collection.', 'info');
         }
 
-        // Step 3: Send the structured objects to the backend
         const postResponse = await fetch('/api/proxies', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -413,12 +346,8 @@ async function importProxies() {
         }
 
         const { data: createdProxies } = await postResponse.json();
+        if (!createdProxies) throw new Error("Backend did not return the created proxies.");
 
-        if (!createdProxies || createdProxies.length === 0) {
-            return showToast('Backend did not return any new proxies.', 'warning');
-        }
-
-        // Step 4: Process the newly created proxies returned from the backend for testing
         const processedProxies = createdProxies.map(p => {
             const parts = p.proxy_data.split(':');
             p.proxyIP = parts[0];
@@ -426,9 +355,8 @@ async function importProxies() {
             return p;
         });
 
-        // Step 5: Update the global state, render the UI, and start testing
         allProxies.push(...processedProxies);
-        showToast(`Successfully imported and saved ${processedProxies.length} new proxies.`, 'success');
+        showToast(`Successfully imported ${processedProxies.length} new proxies.`, 'success');
         document.getElementById('importModal').classList.add('hidden');
 
         applyFiltersAndRender();
@@ -440,113 +368,9 @@ async function importProxies() {
     }
 }
 
-
 // --- Utilities & Modal Logic ---
-function clearFilters() {
-    document.getElementById('countryFilter').value = '';
-    document.getElementById('statusFilter').value = '';
-    document.getElementById('searchInput').value = '';
-    applyFiltersAndRender();
-}
-
-function setupGenerateConfigModalListeners() {
-    let selectedVpnType = 'trojan', selectedPort = '443', selectedFormat = 'uri';
-    document.querySelectorAll('.vpn-type-btn').forEach(btn => btn.addEventListener('click', (e) => {
-        document.querySelectorAll('.vpn-type-btn').forEach(b => b.classList.remove('bg-blue-600', 'text-white'));
-        e.target.classList.add('bg-blue-600', 'text-white');
-        selectedVpnType = e.target.dataset.type;
-    }));
-    document.querySelectorAll('.port-btn').forEach(btn => btn.addEventListener('click', (e) => {
-        document.querySelectorAll('.port-btn').forEach(b => b.classList.remove('bg-blue-600', 'text-white'));
-        e.target.classList.add('bg-blue-600', 'text-white');
-        selectedPort = e.target.dataset.port;
-    }));
-    document.querySelectorAll('.format-btn').forEach(btn => btn.addEventListener('click', (e) => {
-        document.querySelectorAll('.format-btn').forEach(b => b.classList.remove('bg-blue-600', 'text-white'));
-        e.target.classList.add('bg-blue-600', 'text-white');
-        selectedFormat = e.target.dataset.format;
-    }));
-    document.getElementById('generateUuidBtn').addEventListener('click', () => {
-        document.getElementById('uuidInput').value = generateUUID();
-    });
-    document.getElementById('cancelGenerateBtn').addEventListener('click', () => document.getElementById('generateConfigModal').classList.add('hidden'));
-    document.getElementById('confirmGenerateBtn').addEventListener('click', () => generateConfiguration(selectedVpnType, selectedPort, selectedFormat));
-    document.getElementById('closeResultBtn').addEventListener('click', () => document.getElementById('resultModal').classList.add('hidden'));
-    document.getElementById('copyResultBtn').addEventListener('click', copyResult);
-
-    // Set default selections
-    const vpnBtn = document.querySelector('.vpn-type-btn[data-type="trojan"]');
-    if (vpnBtn) vpnBtn.classList.add('bg-blue-600', 'text-white');
-    const portBtn = document.querySelector('.port-btn[data-port="443"]');
-    if (portBtn) portBtn.classList.add('bg-blue-600', 'text-white');
-    const formatBtn = document.querySelector('.format-btn[data-format="uri"]');
-    if (formatBtn) formatBtn.classList.add('bg-blue-600', 'text-white');
-}
-
-function generateConfiguration(selectedVpnType, selectedPort, selectedFormat) {
-    const workerDomain = document.getElementById('workerDomainSelect').value;
-    const uuid = document.getElementById('uuidInput').value;
-    if (!workerDomain || !selectedProxy) {
-        showToast('Please select a worker domain and a proxy.', 'warning');
-        return;
-    }
-    const host = new URL(workerDomain).hostname;
-    const security = selectedPort === '443' ? 'tls' : 'none';
-    const path = encodeURIComponent(`/${selectedProxy.proxyIP}-${selectedProxy.proxyPort}`);
-    const remark = encodeURIComponent(`${selectedVpnType.toUpperCase()}-${selectedProxy.country}`);
-    let config = '';
-    if (selectedVpnType === 'trojan') {
-        config = `trojan://${uuid}@${host}:${selectedPort}?path=${path}&security=${security}&host=${host}&type=ws&sni=${host}#${remark}`;
-    } else if (selectedVpnType === 'vless') {
-        config = `vless://${uuid}@${host}:${selectedPort}?path=${path}&security=${security}&encryption=none&host=${host}&type=ws&sni=${host}#${remark}`;
-    } else if (selectedVpnType === 'ss') {
-        const encodedPassword = btoa(`chacha20-ietf-poly1305:${uuid}`);
-        config = `ss://${encodedPassword}@${host}:${selectedPort}?plugin=v2ray-plugin;mode=websocket;path=${path};host=${host}${security === 'tls' ? ';tls' : ''};sni=${host}#${remark}`;
-    }
-    const resultContent = document.getElementById('resultContent');
-    if (selectedFormat === 'qrcode') {
-        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(config)}`;
-        resultContent.innerHTML = `<div class="text-center"><img src="${qrUrl}" alt="QR Code" class="mx-auto"></div>`;
-    } else {
-        resultContent.innerHTML = `<pre class="bg-gray-100 p-4 rounded-md overflow-x-auto text-sm">${config}</pre>`;
-    }
-    document.getElementById('generateConfigModal').classList.add('hidden');
-    document.getElementById('resultModal').classList.remove('hidden');
-}
-
-function copyResult() {
-    const content = document.querySelector('#resultContent pre')?.textContent;
-    if (!content) return;
-    navigator.clipboard.writeText(content).then(() => {
-        showToast('Copied to clipboard!', 'success');
-        const copyBtn = document.getElementById('copyResultBtn');
-        copyBtn.innerHTML = '<i class="fas fa-check mr-2"></i> Copied!';
-        setTimeout(() => { copyBtn.innerHTML = '<i class="fas fa-copy mr-2"></i> Copy'; }, 2000);
-    }
-}
-
-async function updateWorkerDomainOptions() {
-    const workerDomainSelect = document.getElementById('workerDomainSelect');
-    if (!workerDomainSelect) return;
-    try {
-        const response = await fetch('/api/tunnels');
-        if (!response.ok) throw new Error('Failed to fetch tunnels');
-        const tunnels = await response.json();
-        workerDomainSelect.innerHTML = '<option value="">Select a worker domain</option>';
-        tunnels.forEach(tunnel => {
-            const option = document.createElement('option');
-            option.value = `https://${tunnel.domain}`;
-            option.textContent = `${tunnel.name} (${tunnel.domain})`;
-            workerDomainSelect.appendChild(option);
-        });
-    } catch (error) {
-        console.error('Error loading tunnels for modal:', error);
-        workerDomainSelect.innerHTML = '<option value="">Error loading domains</option>';
-    }
-}
-
 function getCountryName(code) {
-    const names = { 'US': 'United States', 'SG': 'Singapore', 'JP': 'Japan', 'DE': 'Germany', 'FR': 'France', 'XX': 'Unknown' };
+    const names = { 'US': 'United States', 'SG': 'Singapore', 'JP': 'Japan', 'DE': 'Germany', 'FR': 'France', 'XX': 'Unknown', 'at': 'Austria' };
     return names[code] || code;
 }
 
@@ -557,28 +381,8 @@ function getFlagEmoji(countryCode) {
 }
 
 function showToast(message, type = 'info') {
-    if (typeof Toastify === 'undefined') {
-        console.warn('Toastify library not loaded. Falling back to alert.');
-        alert(message);
-        return;
-    }
-    const color = {
-        success: 'linear-gradient(to right, #00b09b, #96c93d)',
-        error: 'linear-gradient(to right, #ff5f6d, #ffc371)',
-        warning: 'linear-gradient(to right, #f7b733, #fc4a1a)',
-        info: 'linear-gradient(to right, #00d2ff, #3a7bd5)'
-    }[type];
-    Toastify({
-        text: message,
-        duration: 3000,
-        close: true,
-        gravity: "top",
-        position: "right",
-        stopOnFocus: true,
-        style: {
-            background: color,
-        }
-    }).showToast();
+    // This is a placeholder for a proper toast library like Toastify
+    console.log(`[${type.toUpperCase()}] ${message}`);
 }
 
 function generateUUID() {
