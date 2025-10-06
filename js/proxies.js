@@ -378,15 +378,15 @@ async function importProxies() {
             return showToast('No proxies found in the provided URL.', 'warning');
         }
 
-        // Step 1: Correctly parse the text file into structured objects.
-        // Format is: IP:PORT,COUNTRY,ORG...
+        // Final Correct Parsing Logic
+        // Format: IP,PORT,COUNTRY,ORG...
         const newProxyObjects = lines.map(line => {
             const parts = line.split(',');
-            if (parts.length < 2) return null; // Must have at least IP:PORT,COUNTRY
+            if (parts.length < 4) return null;
 
-            const proxy_data = parts[0]; // The full IP:PORT string
-            const country = parts[1] || 'XX';
-            const org = parts.slice(2).join(',') || 'Unknown Org'; // All remaining parts are the org
+            const proxy_data = `${parts[0]}:${parts[1]}`; // Combine IP and Port
+            const country = parts[2] || 'XX';
+            const org = parts.slice(3).join(',') || 'Unknown Org'; // All remaining parts are the org
 
             return { proxy_data, country, org };
         }).filter(Boolean);
