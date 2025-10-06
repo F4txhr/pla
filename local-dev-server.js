@@ -33,59 +33,69 @@ const createResMock = (res) => ({
     },
 });
 
-const server = http.createServer(async (req, res) => {
-    const urlPath = req.url.split('?')[0];
-
-    // Route API requests to the corresponding serverless function
-    if (urlPath.startsWith('/api/')) {
-        const functionName = urlPath.split('/')[2];
-        const functionPath = path.join(__dirname, 'api', `${functionName}.js`);
-
-        try {
-            // Check if the function file exists
-            if (fs.existsSync(functionPath)) {
-                // Dynamically import the function module
-                const { default: handler } = await import(functionPath);
-                const resMock = createResMock(res);
-
-                // Execute the function handler
-                await handler(req, resMock);
-            } else {
-                res.writeHead(404, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: 'Function not found' }));
+const server = http.createServer((req, res) => {
+    // This is the crucial fix: we need to parse the request body for POST/PATCH requests
+    const chunks = [];
+    req.on('data', chunk => chunks.push(chunk));
+    req.on('end', async () => {
+        const body = Buffer.concat(chunks).toString();
+        if (body) {
+            try {
+                req.body = JSON.parse(body);
+            } catch (e) {
+                req.body = body; // Fallback for non-JSON bodies
             }
-        } catch (error) {
-            console.error(`Error executing function ${functionName}:`, error);
-            res.writeHead(500, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'Internal Server Error' }));
         }
-    } else {
-        // Serve static files (HTML, CSS, JS) from the root directory
-        let filePath = path.join(__dirname, urlPath === '/' ? 'index.html' : urlPath);
-        const extname = String(path.extname(filePath)).toLowerCase();
-        const mimeTypes = {
-            '.html': 'text/html',
-            '.js': 'text/javascript',
-            '.css': 'text/css',
-        };
 
-        const contentType = mimeTypes[extname] || 'application/octet-stream';
+        const urlPath = req.url.split('?')[0];
 
-        fs.readFile(filePath, (error, content) => {
-            if (error) {
-                if (error.code == 'ENOENT') {
-                    res.writeHead(404, { 'Content-Type': 'text/html' });
-                    res.end('<h1>404 Not Found</h1>', 'utf-8');
+        // Route API requests to the corresponding serverless function
+        if (urlPath.startsWith('/api/')) {
+            const functionName = urlPath.split('/')[2];
+            const functionPath = path.join(__dirname, 'api', `${functionName}.js`);
+
+            try {
+                if (fs.existsSync(functionPath)) {
+                    const { default: handler } = await import(`./api/${functionName}.js?t=${Date.now()}`); // Bust cache
+                    const resMock = createResMock(res);
+                    await handler(req, resMock);
                 } else {
-                    res.writeHead(500);
-                    res.end('Sorry, check with the site admin for error: ' + error.code + ' ..\n');
+                    res.writeHead(404, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Function not found' }));
                 }
-            } else {
-                res.writeHead(200, { 'Content-Type': contentType });
-                res.end(content, 'utf-8');
+            } catch (error) {
+                console.error(`Error executing function ${functionName}:`, error);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Internal Server Error' }));
             }
-        });
-    }
+        } else {
+            // Serve static files (HTML, CSS, JS)
+            const filePath = path.join(__dirname, urlPath === '/' ? 'index.html' : urlPath);
+            const extname = String(path.extname(filePath)).toLowerCase();
+            const mimeTypes = {
+                '.html': 'text/html',
+                '.js': 'text/javascript',
+                '.css': 'text/css',
+                '.txt': 'text/plain',
+            };
+            const contentType = mimeTypes[extname] || 'application/octet-stream';
+
+            fs.readFile(filePath, (error, content) => {
+                if (error) {
+                    if (error.code === 'ENOENT') {
+                        res.writeHead(404, { 'Content-Type': 'text/html' });
+                        res.end('<h1>404 Not Found</h1>', 'utf-8');
+                    } else {
+                        res.writeHead(500);
+                        res.end('Sorry, an error occurred: ' + error.code);
+                    }
+                } else {
+                    res.writeHead(200, { 'Content-Type': contentType });
+                    res.end(content, 'utf-8');
+                }
+            });
+        }
+    });
 });
 
 server.listen(PORT, () => {
