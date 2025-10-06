@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS proxies (
     -- The latency of the proxy in milliseconds
     latency INT DEFAULT 0,
     -- The timestamp of the last health check
-    lastChecked TIMESTAMPTZ,
+    last_checked TIMESTAMPTZ,
     -- Automatically record when the proxy was added
     created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
@@ -120,7 +120,7 @@ CREATE POLICY "Allow full access for admin" ON metadata FOR ALL USING (true);
 --  and need to add the new columns for proxy testing.
 -- =================================================================
 ALTER TABLE proxies ADD COLUMN IF NOT EXISTS latency INT DEFAULT 0;
-ALTER TABLE proxies ADD COLUMN IF NOT EXISTS lastChecked TIMESTAMPTZ;
+ALTER TABLE proxies ADD COLUMN IF NOT EXISTS last_checked TIMESTAMPTZ;
 
 -- =================================================================
 --  End of Script

@@ -35,7 +35,7 @@ async function initializeProxyPage() {
     proxyContainer.classList.remove('hidden');
 
     const now = Date.now();
-    const staleProxies = allProxies.filter(p => !p.lastChecked || (now - new Date(p.lastChecked).getTime()) > CACHE_DURATION_MS);
+    const staleProxies = allProxies.filter(p => !p.last_checked || (now - new Date(p.last_checked).getTime()) > CACHE_DURATION_MS);
     if (staleProxies.length > 0) {
         console.log(`Found ${staleProxies.length} stale proxies. Starting background health check...`);
         checkProxies(staleProxies, false);
@@ -178,7 +178,7 @@ function renderProxies() {
 
 function createProxyCardHTML(proxy) {
     const now = Date.now();
-    const isStale = !proxy.lastChecked || (now - new Date(proxy.lastChecked).getTime()) >= CACHE_DURATION_MS;
+    const isStale = !proxy.last_checked || (now - new Date(proxy.last_checked).getTime()) >= CACHE_DURATION_MS;
     const displayStatus = isStale ? 'unknown' : proxy.status;
 
     let latencyClass = 'text-gray-500';
@@ -349,13 +349,13 @@ async function processHealthCheckBatch(batch) {
         if (proxyToUpdate) {
             proxyToUpdate.status = result.success ? 'online' : 'offline';
             proxyToUpdate.latency = result.latency_ms || 0;
-            proxyToUpdate.lastChecked = new Date().toISOString();
+            proxyToUpdate.last_checked = new Date().toISOString();
 
             updatesForApi.push({
                 id: proxyToUpdate.id,
                 status: proxyToUpdate.status,
                 latency: proxyToUpdate.latency,
-                lastChecked: proxyToUpdate.lastChecked
+                last_checked: proxyToUpdate.last_checked
             });
         }
     });

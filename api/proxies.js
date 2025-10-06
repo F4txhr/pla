@@ -17,7 +17,7 @@ async function handleGet(request, response) {
     try {
         const { data, error } = await supabase
             .from('proxies')
-            .select('id, proxy_data, status, latency, lastChecked, created_at');
+            .select('id, proxy_data, status, latency, last_checked, created_at');
 
         if (error) throw error;
 
@@ -42,7 +42,7 @@ async function handlePost(request, response) {
                 proxy_data: proxy,
                 status: 'unknown',
                 latency: 0,
-                lastChecked: null
+                last_checked: null
             }));
 
             const { error: insertError } = await supabase
