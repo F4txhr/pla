@@ -349,7 +349,7 @@ async function processHealthCheckBatch(batch) {
 
             updatesForApi.push({
                 id: proxyToUpdate.id,
-                proxy_data: proxyToUpdate.proxy_data, // Ensure proxy_data is included in the update
+                proxy_data: proxyToUpdate.proxy_data,
                 status: proxyToUpdate.status,
                 latency: proxyToUpdate.latency,
                 last_checked: proxyToUpdate.last_checked,
@@ -522,7 +522,7 @@ function copyResult() {
         const copyBtn = document.getElementById('copyResultBtn');
         copyBtn.innerHTML = '<i class="fas fa-check mr-2"></i> Copied!';
         setTimeout(() => { copyBtn.innerHTML = '<i class="fas fa-copy mr-2"></i> Copy'; }, 2000);
-    });
+    }
 }
 
 async function updateWorkerDomainOptions() {
