@@ -17,7 +17,8 @@ async function handleGet(request, response) {
     try {
         const { data, error } = await supabase
             .from('proxies')
-            .select('id, proxy_data, status, latency, last_checked, country, org, created_at');
+            .select('id, proxy_data, status, latency, last_checked, country, org, created_at')
+            .range(0, 4999); // Override default 1000-row limit
 
         if (error) throw error;
 
