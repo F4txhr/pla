@@ -270,7 +270,24 @@ async function loadProxiesFromApi() {
     try {
         const response = await fetch('/api/proxies');
         if (!response.ok) throw new Error('Failed to fetch proxy data from API.');
-        return await response.json();
+        const proxies = await response.json();
+        // The API returns 'proxy_data', but we need 'proxyIP' and 'proxyPort' for testing.
+        return proxies.map(p => {
+            try {
+                // Basic parsing for format: user:pass@host:port or host:port
+                const url = new URL(p.proxy_data.includes('://') ? p.proxy_data : `http://${p.proxy_data}`);
+                p.proxyIP = url.hostname;
+                p.proxyPort = url.port;
+            } catch (e) {
+                // Handle cases without a scheme, e.g., 1.2.3.4:8080
+                const parts = p.proxy_data.split(':');
+                p.proxyIP = parts[0];
+                p.proxyPort = parts[1];
+            }
+            // Ensure status is initialized
+            if (!p.status) p.status = 'unknown';
+            return p;
+        });
     } catch (error) {
         console.error(error);
         showToast('Could not load proxy data. Please try again later.', 'error');
@@ -278,15 +295,22 @@ async function loadProxiesFromApi() {
     }
 }
 
-async function saveProxiesToApi(proxies) {
+async function saveProxyStatusUpdates(updates) {
+    if (updates.length === 0) return;
     try {
-        await fetch('/api/proxies', {
-            method: 'POST',
+        const response = await fetch('/api/proxies', {
+            method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(proxies)
+            body: JSON.stringify(updates)
         });
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.details || 'Failed to save proxy statuses.');
+        }
+        console.log('Successfully saved proxy status updates.');
     } catch (error) {
-        console.error('Failed to save proxy data to API:', error);
+        console.error('Failed to save proxy status updates to API:', error);
+        showToast('Could not save proxy test results.', 'error');
     }
 }
 
@@ -295,33 +319,47 @@ async function checkProxies(proxiesToCheck, isManualTrigger) {
         const proxy = allProxies.find(ap => ap.id === p.id);
         if (proxy) proxy.status = 'testing';
     });
-    renderProxies();
+    renderProxies(); // Initial render to show "testing" status
 
-    const batchSize = 1000;
+    const batchSize = 10; // Smaller batch size for better UI responsiveness
     for (let i = 0; i < proxiesToCheck.length; i += batchSize) {
         const batch = proxiesToCheck.slice(i, i + batchSize);
-        await processHealthCheckBatch(batch);
-        renderProxies();
-        await saveProxiesToApi(allProxies);
+        const updates = await processHealthCheckBatch(batch);
+        renderProxies(); // Re-render after each batch is processed
+        await saveProxyStatusUpdates(updates); // Save the updates to the database
         window.dispatchEvent(new CustomEvent('proxyDataUpdated'));
     }
     console.log('Health check cycle complete.');
+    showToast('All proxies have been tested.', 'success');
 }
 
 async function processHealthCheckBatch(batch) {
     const healthChecks = batch.map(proxy => {
         const url = `${API_BASE_URL}/health?proxy=${proxy.proxyIP}:${proxy.proxyPort}`;
-        return fetch(url).then(res => res.ok ? res.json() : Promise.reject(`HTTP error ${res.status}`)).catch(() => ({ success: false, proxy: `${proxy.proxyIP}:${proxy.proxyPort}`, latency_ms: 0 }));
+        return fetch(url)
+            .then(res => res.ok ? res.json() : Promise.reject(`HTTP error ${res.status}`))
+            .catch(() => ({ success: false, proxy: `${proxy.proxyIP}:${proxy.proxyPort}`, latency_ms: 0, error: 'Network Error' }));
     });
+
     const results = await Promise.all(healthChecks);
+    const updatesForApi = [];
+
     results.forEach(result => {
         const proxyToUpdate = allProxies.find(p => `${p.proxyIP}:${p.proxyPort}` === result.proxy);
         if (proxyToUpdate) {
             proxyToUpdate.status = result.success ? 'online' : 'offline';
             proxyToUpdate.latency = result.latency_ms || 0;
             proxyToUpdate.lastChecked = new Date().toISOString();
+
+            updatesForApi.push({
+                id: proxyToUpdate.id,
+                status: proxyToUpdate.status,
+                latency: proxyToUpdate.latency,
+                lastChecked: proxyToUpdate.lastChecked
+            });
         }
     });
+    return updatesForApi;
 }
 
 async function importProxies() {

@@ -5,8 +5,10 @@ export default async function handler(request, response) {
         return handleGet(request, response);
     } else if (request.method === 'POST') {
         return handlePost(request, response);
+    } else if (request.method === 'PATCH') {
+        return handlePatch(request, response);
     } else {
-        response.setHeader('Allow', ['GET', 'POST']);
+        response.setHeader('Allow', ['GET', 'POST', 'PATCH']);
         return response.status(405).json({ error: `Method ${request.method} Not Allowed` });
     }
 }
@@ -15,7 +17,7 @@ async function handleGet(request, response) {
     try {
         const { data, error } = await supabase
             .from('proxies')
-            .select('id, proxy_data, status, created_at');
+            .select('id, proxy_data, status, latency, lastChecked, created_at');
 
         if (error) throw error;
 
@@ -30,23 +32,19 @@ async function handlePost(request, response) {
     try {
         const newProxies = request.body;
 
-        // Ensure the request body is an array
         if (!Array.isArray(newProxies)) {
             return response.status(400).json({ error: 'Request body must be an array of proxy strings.' });
         }
 
-        // Step 1: Delete all existing proxies to ensure a fresh list.
-        // This is simpler than calculating a diff.
-        const { error: deleteError } = await supabase
-            .from('proxies')
-            .delete()
-            .neq('id', -1); // A condition to delete all rows
-
-        if (deleteError) throw deleteError;
-
-        // Step 2: Insert the new proxies if the list is not empty.
+        // This function now only ADDS new proxies, making it non-destructive.
         if (newProxies.length > 0) {
-            const proxiesToInsert = newProxies.map(proxy => ({ proxy_data: proxy, status: 'unchecked' }));
+            const proxiesToInsert = newProxies.map(proxy => ({
+                proxy_data: proxy,
+                status: 'unknown',
+                latency: 0,
+                lastChecked: null
+            }));
+
             const { error: insertError } = await supabase
                 .from('proxies')
                 .insert(proxiesToInsert);
@@ -54,17 +52,37 @@ async function handlePost(request, response) {
             if (insertError) throw insertError;
         }
 
-        // Step 3: Update the 'last_updated_timestamp' in the metadata table.
-        // The `upsert` operation will create the key if it doesn't exist or update it if it does.
         const { error: metaError } = await supabase
             .from('metadata')
             .upsert({ key: 'last_updated_timestamp', value: new Date().toISOString() });
 
         if (metaError) throw metaError;
 
-        return response.status(200).json({ success: true, message: 'Proxies updated successfully.' });
+        return response.status(201).json({ success: true, message: 'Proxies imported successfully.' });
     } catch (error) {
-        console.error('Error updating proxies:', error);
-        return response.status(500).json({ error: 'Failed to update proxies.', details: error.message });
+        console.error('Error importing proxies:', error);
+        return response.status(500).json({ error: 'Failed to import proxies.', details: error.message });
+    }
+}
+
+async function handlePatch(request, response) {
+    try {
+        const updates = request.body;
+
+        if (!Array.isArray(updates) || updates.length === 0) {
+            return response.status(400).json({ error: 'Request body must be a non-empty array of proxy update objects.' });
+        }
+
+        // Use 'upsert' for batch updates. This is efficient.
+        const { data, error } = await supabase
+            .from('proxies')
+            .upsert(updates, { onConflict: 'id' });
+
+        if (error) throw error;
+
+        return response.status(200).json({ success: true, message: `${updates.length} proxies updated successfully.` });
+    } catch (error) {
+        console.error('Error batch updating proxies:', error);
+        return response.status(500).json({ error: 'Failed to update proxy statuses.', details: error.message });
     }
 }
