@@ -274,17 +274,13 @@ async function loadProxiesFromApi() {
         // The API returns 'proxy_data', but we need 'proxyIP' and 'proxyPort' for testing.
         return proxies.map(p => {
             try {
-                // Basic parsing for format: user:pass@host:port or host:port
-                const url = new URL(p.proxy_data.includes('://') ? p.proxy_data : `http://${p.proxy_data}`);
-                p.proxyIP = url.hostname;
-                p.proxyPort = url.port;
-            } catch (e) {
-                // Handle cases without a scheme, e.g., 1.2.3.4:8080
                 const parts = p.proxy_data.split(':');
                 p.proxyIP = parts[0];
                 p.proxyPort = parts[1];
+            } catch (e) {
+                p.proxyIP = 'Error';
+                p.proxyPort = 'Error';
             }
-            // Ensure status is initialized
             if (!p.status) p.status = 'unknown';
             return p;
         });
@@ -356,7 +352,9 @@ async function processHealthCheckBatch(batch) {
                 proxy_data: proxyToUpdate.proxy_data, // Ensure proxy_data is included in the update
                 status: proxyToUpdate.status,
                 latency: proxyToUpdate.latency,
-                last_checked: proxyToUpdate.last_checked
+                last_checked: proxyToUpdate.last_checked,
+                country: proxyToUpdate.country,
+                org: proxyToUpdate.org
             });
         }
     });
@@ -371,29 +369,42 @@ async function importProxies() {
     showToast('Importing proxies...', 'info');
 
     try {
-        // Step 1: Fetch the raw proxy list from the provided URL
         const response = await fetch(proxyUrl);
         if (!response.ok) throw new Error(`Failed to fetch from URL: ${response.statusText}`);
         const text = await response.text();
-        const rawProxyStrings = text.split('\n').filter(Boolean);
+        const lines = text.split('\n').filter(Boolean);
 
-        if (rawProxyStrings.length === 0) {
+        if (lines.length === 0) {
             return showToast('No proxies found in the provided URL.', 'warning');
         }
 
-        // Step 2: Filter out proxies that already exist in the frontend state
-        const existingProxySet = new Set(allProxies.map(p => p.proxy_data));
-        const uniqueNewProxyStrings = rawProxyStrings.filter(p => !existingProxySet.has(p));
+        // Step 1: Correctly parse the text file into structured objects.
+        // Format is: IP:PORT,COUNTRY,ORG...
+        const newProxyObjects = lines.map(line => {
+            const parts = line.split(',');
+            if (parts.length < 2) return null; // Must have at least IP:PORT,COUNTRY
 
-        if (uniqueNewProxyStrings.length === 0) {
+            const proxy_data = parts[0]; // The full IP:PORT string
+            const country = parts[1] || 'XX';
+            const org = parts.slice(2).join(',') || 'Unknown Org'; // All remaining parts are the org
+
+            return { proxy_data, country, org };
+        }).filter(Boolean);
+
+        // Step 2: Filter out proxies that already exist
+        const existingProxySet = new Set(allProxies.map(p => p.proxy_data));
+        const uniqueNewProxies = newProxyObjects.filter(p => !existingProxySet.has(p.proxy_data));
+
+        if (uniqueNewProxies.length === 0) {
+            document.getElementById('importModal').classList.add('hidden');
             return showToast('All proxies from the list are already in your collection.', 'info');
         }
 
-        // Step 3: Send only the new, unique proxies to the backend to be created
+        // Step 3: Send the structured objects to the backend
         const postResponse = await fetch('/api/proxies', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(uniqueNewProxyStrings)
+            body: JSON.stringify(uniqueNewProxies)
         });
 
         if (!postResponse.ok) {
@@ -401,40 +412,34 @@ async function importProxies() {
             throw new Error(errorData.details || 'Backend failed to save new proxies.');
         }
 
-        const { data: newlyCreatedProxies } = await postResponse.json();
+        const { data: createdProxies } = await postResponse.json();
 
-        if (!newlyCreatedProxies || newlyCreatedProxies.length === 0) {
+        if (!createdProxies || createdProxies.length === 0) {
             return showToast('Backend did not return any new proxies.', 'warning');
         }
 
-        // Step 4: Process the newly created proxies returned from the backend
-        const processedNewProxies = newlyCreatedProxies.map(p => {
-            try {
-                const url = new URL(p.proxy_data.includes('://') ? p.proxy_data : `http://${p.proxy_data}`);
-                p.proxyIP = url.hostname;
-                p.proxyPort = url.port;
-            } catch (e) {
-                const parts = p.proxy_data.split(':');
-                p.proxyIP = parts[0];
-                p.proxyPort = parts[1];
-            }
-            if (!p.status) p.status = 'unknown';
+        // Step 4: Process the newly created proxies returned from the backend for testing
+        const processedProxies = createdProxies.map(p => {
+            const parts = p.proxy_data.split(':');
+            p.proxyIP = parts[0];
+            p.proxyPort = parts[1];
             return p;
         });
 
-        // Step 5: Update the global state, render the UI, and start testing the new proxies
-        allProxies.push(...processedNewProxies);
-        showToast(`Successfully imported and saved ${processedNewProxies.length} new proxies.`, 'success');
+        // Step 5: Update the global state, render the UI, and start testing
+        allProxies.push(...processedProxies);
+        showToast(`Successfully imported and saved ${processedProxies.length} new proxies.`, 'success');
         document.getElementById('importModal').classList.add('hidden');
 
         applyFiltersAndRender();
-        checkProxies(processedNewProxies, true); // Automatically test the new proxies
+        checkProxies(processedProxies, true);
 
     } catch (error) {
         console.error('Import Error:', error);
         showToast(`Import failed: ${error.message}`, 'error');
     }
 }
+
 
 // --- Utilities & Modal Logic ---
 function clearFilters() {

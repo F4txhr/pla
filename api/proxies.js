@@ -17,7 +17,7 @@ async function handleGet(request, response) {
     try {
         const { data, error } = await supabase
             .from('proxies')
-            .select('id, proxy_data, status, latency, last_checked, created_at');
+            .select('id, proxy_data, status, latency, last_checked, country, org, created_at');
 
         if (error) throw error;
 
@@ -33,20 +33,21 @@ async function handlePost(request, response) {
         const newProxies = request.body;
 
         if (!Array.isArray(newProxies)) {
-            return response.status(400).json({ error: 'Request body must be an array of proxy strings.' });
+            return response.status(400).json({ error: 'Request body must be an array of proxy objects.' });
         }
 
         let insertedData = [];
-        // This function now only ADDS new proxies, making it non-destructive.
         if (newProxies.length > 0) {
+            // The frontend now sends structured objects
             const proxiesToInsert = newProxies.map(proxy => ({
-                proxy_data: proxy,
+                proxy_data: proxy.proxy_data,
+                country: proxy.country,
+                org: proxy.org,
                 status: 'unknown',
                 latency: 0,
                 last_checked: null
             }));
 
-            // The .select() call here is crucial to return the inserted data
             const { data, error: insertError } = await supabase
                 .from('proxies')
                 .insert(proxiesToInsert)
@@ -62,7 +63,6 @@ async function handlePost(request, response) {
 
         if (metaError) throw metaError;
 
-        // Return the newly created proxies, including their IDs
         return response.status(201).json({ success: true, data: insertedData });
     } catch (error) {
         console.error('Error importing proxies:', error);

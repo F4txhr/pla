@@ -22,6 +22,10 @@ CREATE TABLE IF NOT EXISTS proxies (
     latency INT DEFAULT 0,
     -- The timestamp of the last health check
     last_checked TIMESTAMPTZ,
+    -- The 2-letter country code (e.g., US, SG)
+    country VARCHAR(10),
+    -- The organization or ISP name
+    org TEXT,
     -- Automatically record when the proxy was added
     created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
@@ -121,6 +125,8 @@ CREATE POLICY "Allow full access for admin" ON metadata FOR ALL USING (true);
 -- =================================================================
 ALTER TABLE proxies ADD COLUMN IF NOT EXISTS latency INT DEFAULT 0;
 ALTER TABLE proxies ADD COLUMN IF NOT EXISTS last_checked TIMESTAMPTZ;
+ALTER TABLE proxies ADD COLUMN IF NOT EXISTS country VARCHAR(10);
+ALTER TABLE proxies ADD COLUMN IF NOT EXISTS org TEXT;
 
 -- =================================================================
 --  End of Script
