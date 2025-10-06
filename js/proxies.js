@@ -365,40 +365,73 @@ async function processHealthCheckBatch(batch) {
 async function importProxies() {
     const proxyUrl = document.getElementById('proxyUrlInput').value.trim();
     if (!proxyUrl) {
-        showToast('Please enter a URL.', 'warning');
-        return;
+        return showToast('Please enter a URL.', 'warning');
     }
     showToast('Importing proxies...', 'info');
-    try {
-        const response = await fetch(proxyUrl);
-        if (!response.ok) throw new Error(`Failed to fetch: ${response.status}`);
-        const text = await response.text();
-        const newProxies = text.split('\n').filter(Boolean).map(line => {
-            const [proxyIP, proxyPort, country, org] = line.split(',');
-            if (!proxyIP || !proxyPort) return null;
-            return { id: generateUUID(), proxyIP, proxyPort, country: country || 'XX', org, status: 'unknown', latency: 0, lastChecked: null };
-        }).filter(Boolean);
 
-        if (newProxies.length === 0) {
-            return showToast('No valid proxies found.', 'warning');
+    try {
+        // Step 1: Fetch the raw proxy list from the provided URL
+        const response = await fetch(proxyUrl);
+        if (!response.ok) throw new Error(`Failed to fetch from URL: ${response.statusText}`);
+        const text = await response.text();
+        const rawProxyStrings = text.split('\n').filter(Boolean);
+
+        if (rawProxyStrings.length === 0) {
+            return showToast('No proxies found in the provided URL.', 'warning');
         }
 
-        const existingProxyKeys = new Set(allProxies.map(p => `${p.proxyIP}:${p.proxyPort}`));
-        const uniqueNewProxies = newProxies.filter(p => !existingProxyKeys.has(`${p.proxyIP}:${p.proxyPort}`));
+        // Step 2: Filter out proxies that already exist in the frontend state
+        const existingProxySet = new Set(allProxies.map(p => p.proxy_data));
+        const uniqueNewProxyStrings = rawProxyStrings.filter(p => !existingProxySet.has(p));
 
-        if (uniqueNewProxies.length === 0) {
+        if (uniqueNewProxyStrings.length === 0) {
             return showToast('All proxies from the list are already in your collection.', 'info');
         }
 
-        allProxies.push(...uniqueNewProxies);
-        showToast(`Successfully imported ${uniqueNewProxies.length} new proxies.`, 'success');
+        // Step 3: Send only the new, unique proxies to the backend to be created
+        const postResponse = await fetch('/api/proxies', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(uniqueNewProxyStrings)
+        });
+
+        if (!postResponse.ok) {
+            const errorData = await postResponse.json();
+            throw new Error(errorData.details || 'Backend failed to save new proxies.');
+        }
+
+        const { data: newlyCreatedProxies } = await postResponse.json();
+
+        if (!newlyCreatedProxies || newlyCreatedProxies.length === 0) {
+            return showToast('Backend did not return any new proxies.', 'warning');
+        }
+
+        // Step 4: Process the newly created proxies returned from the backend
+        const processedNewProxies = newlyCreatedProxies.map(p => {
+            try {
+                const url = new URL(p.proxy_data.includes('://') ? p.proxy_data : `http://${p.proxy_data}`);
+                p.proxyIP = url.hostname;
+                p.proxyPort = url.port;
+            } catch (e) {
+                const parts = p.proxy_data.split(':');
+                p.proxyIP = parts[0];
+                p.proxyPort = parts[1];
+            }
+            if (!p.status) p.status = 'unknown';
+            return p;
+        });
+
+        // Step 5: Update the global state, render the UI, and start testing the new proxies
+        allProxies.push(...processedNewProxies);
+        showToast(`Successfully imported and saved ${processedNewProxies.length} new proxies.`, 'success');
         document.getElementById('importModal').classList.add('hidden');
 
         applyFiltersAndRender();
-        checkProxies(uniqueNewProxies, true);
+        checkProxies(processedNewProxies, true); // Automatically test the new proxies
+
     } catch (error) {
         console.error('Import Error:', error);
-        showToast('Failed to import proxies. Check URL and format.', 'error');
+        showToast(`Import failed: ${error.message}`, 'error');
     }
 }
 
