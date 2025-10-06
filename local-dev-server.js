@@ -4,9 +4,10 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
 
-// Load environment variables from .env.local
-import 'dotenv/config.js';
+// Explicitly load environment variables from .env.local
+dotenv.config({ path: '.env.local' });
 
 // Get the directory name in an ES module context
 const __filename = fileURLToPath(import.meta.url);
