@@ -1,7 +1,10 @@
-// Mock implementation of the proxies API for local development without Supabase.
-// This avoids network errors in environments like Termux where calls to Supabase might fail.
+// =================================================================================
+// Mock implementation of the proxies API for local development.
+// This version simulates a database in memory to avoid network errors.
+// =================================================================================
 
-// A simple in-memory counter to simulate database IDs.
+// In-memory "database" for proxies. This will reset every time the server restarts.
+let inMemoryProxies = [];
 let proxyIdCounter = 1;
 
 export default async function handler(request, response) {
@@ -17,10 +20,10 @@ export default async function handler(request, response) {
     }
 }
 
-// Simulates fetching proxies. Returns an empty list to start with a clean slate.
+// Simulates fetching all proxies. Returns the current in-memory list.
 async function handleGet(request, response) {
-    console.log("SIMULATOR: GET /api/proxies called. Returning empty array.");
-    return response.status(200).json([]);
+    console.log("SIMULATOR: GET /api/proxies called. Returning in-memory proxies.");
+    return response.status(200).json(inMemoryProxies);
 }
 
 // Simulates creating new proxies.
@@ -33,15 +36,19 @@ async function handlePost(request, response) {
             return response.status(400).json({ error: 'Request body must be an array of proxy objects.' });
         }
 
-        // Assign a unique ID to each new proxy, simulating a database INSERT.
-        const insertedData = newProxies.map(proxy => ({
-            ...proxy,
-            id: proxyIdCounter++, // Simple incrementing ID
-            status: 'unknown',
-            latency: 0,
-            last_checked: null,
-            created_at: new Date().toISOString()
-        }));
+        // Add new proxies to the in-memory list with simulated DB fields.
+        const insertedData = newProxies.map(proxy => {
+            const newEntry = {
+                ...proxy,
+                id: proxyIdCounter++,
+                status: 'unknown',
+                latency: 0,
+                last_checked: null,
+                created_at: new Date().toISOString()
+            };
+            inMemoryProxies.push(newEntry);
+            return newEntry;
+        });
 
         console.log(`SIMULATOR: Responding with ${insertedData.length} newly created proxies.`);
         return response.status(201).json({ success: true, data: insertedData });
@@ -52,7 +59,7 @@ async function handlePost(request, response) {
     }
 }
 
-// Simulates updating proxies.
+// Simulates updating proxies in the in-memory list.
 async function handlePatch(request, response) {
     try {
         const updates = request.body;
@@ -62,7 +69,13 @@ async function handlePatch(request, response) {
             return response.status(400).json({ error: 'Request body must be a non-empty array of proxy update objects.' });
         }
 
-        // In a real scenario, we'd update the data. Here, we just acknowledge it.
+        updates.forEach(update => {
+            const proxyToUpdate = inMemoryProxies.find(p => p.id === update.id);
+            if (proxyToUpdate) {
+                Object.assign(proxyToUpdate, update);
+            }
+        });
+
         console.log("SIMULATOR: Successfully processed patch updates.");
         return response.status(200).json({ success: true, message: `${updates.length} proxies updated successfully.` });
 
