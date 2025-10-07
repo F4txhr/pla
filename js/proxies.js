@@ -256,89 +256,65 @@ async function loadProxiesFromApi() {
     }
 }
 
-// This function updates a single proxy card in the UI without a full re-render.
-function updateProxyCard(proxy) {
-    const cardElement = document.getElementById(`proxy-card-${proxy.id}`);
-    if (cardElement) {
-        // Create a temporary div to hold the new HTML, then replace the old card.
-        // This is safer than manipulating innerHTML of many children.
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = createProxyCardHTML(proxy).trim();
-        cardElement.replaceWith(tempDiv.firstChild);
-    }
-}
-
-// Orchestrates the multi-stage proxy check process.
+// Orchestrates the new "reset-then-test" proxy check process.
 async function checkProxies(proxiesToCheck) {
-    showToast(`Testing ${proxiesToCheck.length} proxies. Please wait...`, 'info');
-
-    // Stage 1: Set UI to 'testing' for immediate feedback
-    proxiesToCheck.forEach(p => {
-        const proxy = allProxies.find(ap => ap.id === p.id);
-        if (proxy) {
-            proxy.status = 'testing';
-            updateProxyCard(proxy);
-        }
-    });
-
-    // Stage 2: Process proxies in large batches sequentially via the backend endpoint
-    const largeBatchSize = 1000;
-    const batches = [];
-    for (let i = 0; i < proxiesToCheck.length; i += largeBatchSize) {
-        batches.push(proxiesToCheck.slice(i, i + largeBatchSize));
+    if (!proxiesToCheck || proxiesToCheck.length === 0) {
+        return showToast('No proxies to test.', 'info');
     }
+
+    showToast(`Resetting and testing ${proxiesToCheck.length} proxies...`, 'info');
+    const proxyIds = proxiesToCheck.map(p => p.id);
 
     try {
-        // Process each large batch sequentially
+        // Step 1: Reset all proxies to 'testing' via the backend.
+        const resetResponse = await fetch('/api/reset-proxies', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ proxyIds })
+        });
+
+        if (!resetResponse.ok) {
+            throw new Error('Failed to reset proxy statuses before testing.');
+        }
+
+        // Step 2: Immediately reload data from the DB and render to show the 'testing' state.
+        console.log('Proxies reset. Reloading UI to show "testing" status...');
+        allProxies = await loadProxiesFromApi();
+        applyFiltersAndRender();
+
+        // Step 3: Process proxies in large batches sequentially.
+        const largeBatchSize = 1000;
+        const batches = [];
+        for (let i = 0; i < proxiesToCheck.length; i += largeBatchSize) {
+            batches.push(proxiesToCheck.slice(i, i + largeBatchSize));
+        }
+
+        console.log(`Processing ${batches.length} batches sequentially...`);
         for (const [index, batch] of batches.entries()) {
-            console.log(`Processing batch ${index + 1} of ${batches.length}...`);
-            const response = await fetch('/api/check-batch', {
+            console.log(`- Checking batch ${index + 1} of ${batches.length}...`);
+            const checkResponse = await fetch('/api/check-batch', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(batch)
             });
-            if (!response.ok) {
-                // Log error but continue to the next batch
-                console.error(`Error processing batch ${index + 1}:`, await response.json());
-            }
-        }
 
-        // Stage 3: Validation Loop to catch any missed proxies
-        let unknownProxies = [];
-        let attempts = 0;
-        const maxAttempts = 10; // Failsafe to prevent infinite loops
-
-        do {
-            attempts++;
-            const response = await fetch('/api/get-unknown-proxies');
-            if (!response.ok) break; // Exit loop if validation check fails
-
-            unknownProxies = await response.json();
-
-            if (unknownProxies.length > 0) {
-                console.log(`Validation attempt ${attempts}: Found ${unknownProxies.length} missed proxies. Re-testing...`);
-                await fetch('/api/check-batch', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(unknownProxies)
-                });
-                await new Promise(resolve => setTimeout(resolve, 2000)); // Wait before next check
+            if (!checkResponse.ok) {
+                console.error(`Error processing batch ${index + 1}:`, await checkResponse.json());
+                // Don't stop; continue to the next batch.
             }
 
-        } while (unknownProxies.length > 0 && attempts < maxAttempts);
-
-        if (unknownProxies.length > 0) {
-             showToast('Testing finished, but some proxies could not be verified.', 'warning');
-        } else {
-             showToast('All proxies have been successfully tested.', 'success');
+            // After each batch, reload and re-render to show real-time progress.
+            console.log(`- Batch ${index + 1} complete. Reloading UI...`);
+            allProxies = await loadProxiesFromApi();
+            applyFiltersAndRender();
         }
+
+        showToast('All proxies have been tested.', 'success');
 
     } catch (error) {
         console.error('A critical error occurred during the testing process:', error);
         showToast('An error occurred. Please check the console for details.', 'error');
-    } finally {
-        // Final reload to ensure UI is 100% up-to-date
-        console.log('Reloading all proxy data from server...');
+        // Final reload to ensure UI is up-to-date even on error.
         allProxies = await loadProxiesFromApi();
         applyFiltersAndRender();
     }
