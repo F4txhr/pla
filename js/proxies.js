@@ -147,25 +147,37 @@ function renderProxies() {
 }
 
 function createProxyCardHTML(proxy) {
-    const now = Date.now();
-    const isStale = !proxy.last_checked || (now - new Date(proxy.last_checked).getTime()) >= CACHE_DURATION_MS;
-    const displayStatus = isStale ? 'unknown' : proxy.status;
+    // UI now DIRECTLY reflects the database status. No more client-side "stale" logic.
+    const displayStatus = proxy.status || 'unknown';
 
     let latencyClass = 'text-gray-500';
     let latencyText = `${proxy.latency || 0}ms`;
 
-    if (proxy.status === 'testing') {
+    if (displayStatus === 'testing') {
         latencyClass = 'text-blue-500';
         latencyText = '<i class="fas fa-spinner fa-spin mr-1"></i> Testing...';
-    } else if (displayStatus === 'offline' || displayStatus === 'unknown') {
+    } else if (displayStatus === 'offline') {
         latencyClass = 'text-red-500';
-        latencyText = isStale ? 'Stale' : 'Offline';
+        latencyText = 'Offline';
+    } else if (displayStatus === 'unknown') {
+        latencyClass = 'text-yellow-500';
+        latencyText = 'Unknown';
     } else if (proxy.latency < 150) {
         latencyClass = 'latency-low';
     } else if (proxy.latency < 500) {
         latencyClass = 'latency-medium';
     } else {
         latencyClass = 'latency-high';
+    }
+
+    // Determine the color of the status indicator dot
+    let statusDotColor = 'bg-yellow-500'; // Default for unknown
+    if (displayStatus === 'online') {
+        statusDotColor = 'bg-green-500';
+    } else if (displayStatus === 'testing') {
+        statusDotColor = 'bg-blue-500';
+    } else if (displayStatus === 'offline') {
+        statusDotColor = 'bg-red-500';
     }
 
     return `
@@ -180,8 +192,8 @@ function createProxyCardHTML(proxy) {
                         </div>
                     </div>
                     <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${displayStatus === 'online' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">
-                        <span class="w-2 h-2 rounded-full mr-1 ${displayStatus === 'online' ? 'bg-green-500' : (proxy.status === 'testing' ? 'bg-blue-500' : 'bg-yellow-500')}"></span>
-                        ${proxy.status === 'testing' ? 'testing' : displayStatus}
+                        <span class="w-2 h-2 rounded-full mr-1 ${statusDotColor}"></span>
+                        ${displayStatus}
                     </span>
                 </div>
                 <div class="mb-4 space-y-2">
