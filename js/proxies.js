@@ -35,12 +35,6 @@ async function initializeProxyPage() {
         proxyContainer.classList.remove('hidden');
     }
 
-    const now = Date.now();
-    const staleProxies = allProxies.filter(p => !p.last_checked || (now - new Date(p.last_checked).getTime()) > CACHE_DURATION_MS);
-    if (staleProxies.length > 0) {
-        console.log(`Found ${staleProxies.length} stale proxies. Starting background health check...`);
-        checkProxies(staleProxies, false);
-    }
 }
 
 function setupProxyEventListeners() {
@@ -268,23 +262,41 @@ async function saveProxyStatusUpdates(updates) {
     }
 }
 
+// This new function updates a single proxy card in the UI without a full re-render.
+function updateProxyCard(proxy) {
+    const cardElement = document.getElementById(`proxy-card-${proxy.id}`);
+    if (cardElement) {
+        // Create a temporary div to hold the new HTML, then replace the old card.
+        // This is safer than manipulating innerHTML of many children.
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = createProxyCardHTML(proxy).trim();
+        cardElement.replaceWith(tempDiv.firstChild);
+    }
+}
+
 async function checkProxies(proxiesToCheck, isManualTrigger) {
     if (isManualTrigger) {
         showToast(`Testing ${proxiesToCheck.length} proxies...`, 'info');
     }
+
+    // Set status to 'testing' and update UI for each card individually
     proxiesToCheck.forEach(p => {
         const proxy = allProxies.find(ap => ap.id === p.id);
-        if (proxy) proxy.status = 'testing';
+        if (proxy) {
+            proxy.status = 'testing';
+            updateProxyCard(proxy); // Update card to show 'testing' status
+        }
     });
-    renderProxies();
 
     const batchSize = 10;
     for (let i = 0; i < proxiesToCheck.length; i += batchSize) {
         const batch = proxiesToCheck.slice(i, i + batchSize);
+        // processHealthCheckBatch now handles its own UI updates
         const updates = await processHealthCheckBatch(batch);
         await saveProxyStatusUpdates(updates);
-        renderProxies();
+        // No full render here, preventing the flicker.
     }
+
     if (isManualTrigger) {
         showToast('All proxies have been tested.', 'success');
     }
@@ -314,8 +326,10 @@ async function processHealthCheckBatch(batch) {
             proxyToUpdate.latency = result.latency_ms;
             proxyToUpdate.last_checked = new Date().toISOString();
 
+            // Update the UI for this specific card smoothly.
+            updateProxyCard(proxyToUpdate);
+
             // Restore the full proxy data object for the upsert operation.
-            // This prevents "null value" errors if the upsert needs to perform an insert.
             updatesForApi.push({
                 id: proxyToUpdate.id,
                 proxy_data: proxyToUpdate.proxy_data,

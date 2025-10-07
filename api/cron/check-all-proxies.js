@@ -18,37 +18,46 @@ export default async function handler(request, response) {
         console.log("Cron job started: Checking all proxies.");
         const API_BASE_URL = 'https://cfanalistik.up.railway.app'; // Standardized API URL
 
-        // 1. Fetch all proxies from the database
-        let allProxies = [];
+        // 1. Fetch only "stale" proxies (not checked in the last hour) to improve efficiency
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+        let staleProxies = [];
         let page = 0;
         const pageSize = 1000;
         let moreData = true;
+
+        console.log(`Fetching proxies not checked since ${oneHourAgo}...`);
 
         while(moreData) {
             const { data, error } = await supabase
                 .from('proxies')
                 .select('id, proxy_data')
+                .or(`last_checked.is.null,last_checked.lt.${oneHourAgo}`)
                 .range(page * pageSize, (page + 1) * pageSize - 1);
 
             if (error) throw error;
 
             if (data && data.length > 0) {
-                allProxies = allProxies.concat(data);
+                staleProxies = staleProxies.concat(data);
                 page++;
             } else {
                 moreData = false;
             }
         }
 
-        console.log(`Fetched ${allProxies.length} proxies to check.`);
+        if (staleProxies.length === 0) {
+            console.log("No stale proxies to check. Cron job finished.");
+            return response.status(200).json({ success: true, message: "No stale proxies to check." });
+        }
 
-        // 2. Test all proxies in batches using the corrected health check logic
-        console.log(`Processing ${allProxies.length} proxies in batches...`);
+        console.log(`Fetched ${staleProxies.length} stale proxies to check.`);
+
+        // 2. Test all stale proxies in batches using the corrected health check logic
+        console.log(`Processing ${staleProxies.length} proxies in batches...`);
         const updates = [];
         const batchSize = 10;
 
-        for (let i = 0; i < allProxies.length; i += batchSize) {
-            const batch = allProxies.slice(i, i + batchSize);
+        for (let i = 0; i < staleProxies.length; i += batchSize) {
+            const batch = staleProxies.slice(i, i + batchSize);
 
             const healthChecks = batch.map(proxy => {
                 const url = `${API_BASE_URL}/health?proxy=${proxy.proxy_data}`;
@@ -85,8 +94,8 @@ export default async function handler(request, response) {
             if (updateError) throw updateError;
         }
 
-        console.log(`Cron job finished. Processed ${allProxies.length} proxies.`);
-        return response.status(200).json({ success: true, message: `Checked ${allProxies.length} proxies.` });
+        console.log(`Cron job finished. Processed ${staleProxies.length} proxies.`);
+        return response.status(200).json({ success: true, message: `Checked ${staleProxies.length} proxies.` });
 
     } catch (error) {
         console.error('Cron job failed:', error);
