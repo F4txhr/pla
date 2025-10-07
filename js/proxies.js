@@ -43,7 +43,7 @@ function setupProxyEventListeners() {
         if (element) element.addEventListener(event, callback);
     };
 
-    addListener('refreshBtn', 'click', () => checkProxies(allProxies, true));
+    addListener('refreshBtn', 'click', () => checkProxies());
     addListener('countryFilter', 'change', applyFiltersAndRender);
     addListener('statusFilter', 'change', applyFiltersAndRender);
     addListener('pageSize', 'change', (e) => {
@@ -258,67 +258,77 @@ async function loadProxiesFromApi() {
     }
 }
 
-// Orchestrates the new "reset-then-test" proxy check process.
-async function checkProxies(proxiesToCheck) {
-    if (!proxiesToCheck || proxiesToCheck.length === 0) {
-        return showToast('No proxies to test.', 'info');
-    }
+let pollingInterval = null;
+const POLLING_DURATION_MS = 5 * 60 * 1000; // Poll for 5 minutes
+const POLLING_FREQUENCY_MS = 5000; // Poll every 5 seconds
 
-    showToast(`Resetting and testing ${proxiesToCheck.length} proxies...`, 'info');
-    const proxyIds = proxiesToCheck.map(p => p.id);
+// Stops any active polling and re-enables the refresh button.
+function stopPolling() {
+    const refreshBtn = document.getElementById('refreshBtn');
+    if (pollingInterval) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
+        console.log('Polling stopped.');
+    }
+    if (refreshBtn) {
+        refreshBtn.disabled = false;
+        refreshBtn.innerHTML = '<i class="fas fa-sync-alt mr-2"></i> Refresh';
+    }
+}
+
+// Triggers the full, asynchronous check on the backend and starts polling.
+async function checkProxies() {
+    const refreshBtn = document.getElementById('refreshBtn');
+    if (refreshBtn && refreshBtn.disabled) return; // Prevent multiple clicks
+
+    refreshBtn.disabled = true;
+    refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Testing...';
 
     try {
-        // Step 1: Reset all proxies to 'testing' via the backend.
-        const resetResponse = await fetch('/api/reset-proxies', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ proxyIds })
+        const response = await fetch('/api/trigger-full-check', {
+            method: 'POST'
         });
 
-        if (!resetResponse.ok) {
-            throw new Error('Failed to reset proxy statuses before testing.');
+        if (response.status !== 202) {
+            const errorData = await response.json();
+            throw new Error(errorData.details || 'Failed to trigger the check.');
         }
 
-        // Step 2: Immediately reload data from the DB and render to show the 'testing' state.
-        console.log('Proxies reset. Reloading UI to show "testing" status...');
+        showToast('Test triggered! Live updates will appear automatically.', 'info');
+
+        // Immediately load data to show the initial 'testing' state
         allProxies = await loadProxiesFromApi();
         applyFiltersAndRender();
 
-        // Step 3: Process proxies in large batches sequentially.
-        const largeBatchSize = 1000;
-        const batches = [];
-        for (let i = 0; i < proxiesToCheck.length; i += largeBatchSize) {
-            batches.push(proxiesToCheck.slice(i, i + largeBatchSize));
-        }
+        // Start polling to show progress
+        stopPolling(); // Ensure no multiple polls are running
+        console.log('Polling started for live UI updates...');
+        const startTime = Date.now();
 
-        console.log(`Processing ${batches.length} batches sequentially...`);
-        for (const [index, batch] of batches.entries()) {
-            console.log(`- Checking batch ${index + 1} of ${batches.length}...`);
-            const checkResponse = await fetch('/api/check-batch', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(batch)
-            });
-
-            if (!checkResponse.ok) {
-                console.error(`Error processing batch ${index + 1}:`, await checkResponse.json());
-                // Don't stop; continue to the next batch.
+        pollingInterval = setInterval(async () => {
+            if (Date.now() - startTime > POLLING_DURATION_MS) {
+                stopPolling();
+                showToast('Live update session finished.', 'info');
+                return;
             }
 
-            // After each batch, reload and re-render to show real-time progress.
-            console.log(`- Batch ${index + 1} complete. Reloading UI...`);
+            console.log('Polling for updates...');
             allProxies = await loadProxiesFromApi();
             applyFiltersAndRender();
-        }
 
-        showToast('All proxies have been tested.', 'success');
+            // Check if all proxies are done and stop polling early
+            const isDone = !allProxies.some(p => p.status === 'testing');
+            if (isDone) {
+                console.log('All proxies tested. Stopping polling.');
+                stopPolling();
+                showToast('All proxies have been tested.', 'success');
+            }
+        }, POLLING_FREQUENCY_MS);
 
     } catch (error) {
-        console.error('A critical error occurred during the testing process:', error);
-        showToast('An error occurred. Please check the console for details.', 'error');
-        // Final reload to ensure UI is up-to-date even on error.
-        allProxies = await loadProxiesFromApi();
-        applyFiltersAndRender();
+        console.error('Error triggering full check:', error);
+        showToast(`Error: ${error.message}`, 'error');
+        stopPolling(); // Make sure button is re-enabled on error
     }
 }
 
