@@ -54,15 +54,32 @@ function setupCommonEventListeners() {
         });
     }
 
+    // FAB menu toggle (only present on proxy page)
+    const fabBtn = document.getElementById('fabBtn');
+    const fabMenu = document.getElementById('fabMenu');
+
+    if (fabBtn && fabMenu) {
+        fabBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            fabMenu.classList.toggle('hidden');
+        });
+    }
+
     // Global click listener to close dropdowns when clicking outside
     document.addEventListener('click', (e) => {
+        // Close user menu
         if (userMenu && !userMenu.classList.contains('hidden') && !userMenuBtn.contains(e.target)) {
             userMenu.classList.add('hidden');
         }
+        // Close tunnel dropdown
         const tunnelDropdown = document.getElementById('tunnelDropdown');
         const tunnelDropdownBtn = document.getElementById('tunnelDropdownBtn');
         if (tunnelDropdown && tunnelDropdownBtn && !tunnelDropdown.classList.contains('hidden') && !tunnelDropdownBtn.contains(e.target)) {
             tunnelDropdown.classList.add('hidden');
+        }
+        // Close FAB menu
+        if (fabMenu && !fabMenu.classList.contains('hidden') && !fabBtn.contains(e.target)) {
+            fabMenu.classList.add('hidden');
         }
     });
 }

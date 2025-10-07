@@ -534,9 +534,31 @@ function handleGenerateConfig() {
     const resultContent = document.getElementById('resultContent');
     const resultModal = document.getElementById('resultModal');
 
+    // Clear previous results
+    resultContent.innerHTML = '';
+
     if (format === 'qrcode') {
-        resultContent.innerHTML = `<p class="text-center text-red-500">QR Code generation is not yet implemented. Please select another format.</p>`;
+        if (resultString) {
+            // Create a container for the QR code to ensure proper centering and styling
+            const qrCodeContainer = document.createElement('div');
+            qrCodeContainer.id = 'qrcode-container';
+            qrCodeContainer.className = 'flex justify-center p-4';
+            resultContent.appendChild(qrCodeContainer);
+
+            // Generate the QR Code
+            new QRCode(qrCodeContainer, {
+                text: resultString,
+                width: 256,
+                height: 256,
+                colorDark : "#000000",
+                colorLight : "#ffffff",
+                correctLevel : QRCode.CorrectLevel.H
+            });
+        } else {
+            resultContent.innerHTML = `<p class="text-center text-red-500">Could not generate QR Code because the config string is empty.</p>`;
+        }
     } else {
+        // Handle URI and other text-based formats
         resultContent.innerHTML = `<pre class="bg-gray-100 p-4 rounded-md text-sm break-all whitespace-pre-wrap">${resultString}</pre>`;
     }
 
