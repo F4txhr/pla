@@ -15,19 +15,16 @@ export default async function handler(request, response) {
 
     try {
         const API_BASE_URL = 'https://cfanalistik.up.railway.app';
-        const updates = [];
-        const batchSize = 10; // Process in smaller sub-batches to avoid overwhelming the health check API
+        const subBatchSize = 10; // Process in smaller sub-batches to avoid overwhelming APIs
 
-        for (let i = 0; i < proxiesToCheck.length; i += batchSize) {
-            const subBatch = proxiesToCheck.slice(i, i + batchSize);
+        for (let i = 0; i < proxiesToCheck.length; i += subBatchSize) {
+            const subBatch = proxiesToCheck.slice(i, i + subBatchSize);
+            const updates = [];
 
             const healthChecks = subBatch.map(proxy => {
                 const url = `${API_BASE_URL}/health?proxy=${proxy.proxy_data}`;
                 return fetch(url)
-                    .then(res => {
-                        if (res.ok) return res.json();
-                        return Promise.reject(new Error(`Health check failed for ${proxy.proxy_data} with status ${res.status}`));
-                    })
+                    .then(res => res.ok ? res.json() : Promise.reject('Fetch failed'))
                     .then(data => ({ success: true, latency_ms: data.latency_ms || 0 }))
                     .catch(() => ({ success: false, latency_ms: 0 }));
             });
@@ -46,16 +43,17 @@ export default async function handler(request, response) {
                     org: originalProxy.org,
                 });
             });
-        }
 
-        if (updates.length > 0) {
-            const { error: updateError } = await supabase
-                .from('proxies')
-                .upsert(updates, { onConflict: 'id' });
+            // Upsert the results for this small sub-batch immediately.
+            if (updates.length > 0) {
+                const { error: updateError } = await supabase
+                    .from('proxies')
+                    .upsert(updates, { onConflict: 'id' });
 
-            if (updateError) {
-                console.error('Supabase error during batch update:', updateError);
-                throw new Error(updateError.message);
+                if (updateError) {
+                    console.error(`Supabase error during sub-batch update (index ${i}):`, updateError);
+                    // Do not throw; allow the process to continue with the next sub-batch.
+                }
             }
         }
 
