@@ -201,6 +201,11 @@ function createProxyCardHTML(proxy) {
                     <div class="text-sm text-gray-600"><i class="fas fa-network-wired mr-2"></i>Port: <span class="font-medium">${proxy.proxyPort}</span></div>
                     <div class="text-sm ${latencyClass}"><i class="fas fa-clock mr-2"></i>Latency: <span class="font-medium">${latencyText}</span></div>
                 </div>
+                <div class="border-t border-gray-200 pt-3 flex justify-end">
+                    <button onclick="generateConfigForProxy(event, ${proxy.id})" class="text-xs font-medium text-blue-600 hover:text-blue-800 transition-colors">
+                        <i class="fas fa-file-export mr-1"></i> Generate Config
+                    </button>
+                </div>
             </div>
         </div>
     `;
@@ -339,8 +344,18 @@ async function importProxies() {
     showToast('Importing proxies...', 'info');
 
     try {
-        const response = await fetch(proxyUrl);
-        if (!response.ok) throw new Error(`Failed to fetch from URL: ${response.statusText}`);
+        // Use the new server-side endpoint to bypass CORS issues
+        const response = await fetch('/api/fetch-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: proxyUrl })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ details: 'Could not parse error from server.' }));
+            throw new Error(errorData.details || `Failed to fetch from URL. Status: ${response.statusText}`);
+        }
+
         const text = await response.text();
         const lines = text.split('\n').filter(Boolean);
 
@@ -462,6 +477,20 @@ function selectProxy(proxyId) {
 }
 window.selectProxy = selectProxy;
 
+/**
+ * Handles the "Generate Config" button click from within a proxy card.
+ * It selects the proxy and opens the modal in one step.
+ * @param {Event} event - The click event.
+ * @param {number} proxyId - The ID of the proxy to select.
+ */
+function generateConfigForProxy(event, proxyId) {
+    event.stopPropagation(); // Prevent the card's main click event from firing
+    selectProxy(proxyId);
+    openGenerateConfigModal();
+}
+window.generateConfigForProxy = generateConfigForProxy;
+
+
 function openGenerateConfigModal() {
     if (!selectedProxy) {
         showToast('Please select a proxy first by clicking on its card.', 'warning');
@@ -497,7 +526,7 @@ function handleButtonGroup(selectedBtn, groupClass) {
     selectedBtn.classList.remove('border-gray-300');
 }
 
-function handleGenerateConfig() {
+async function handleGenerateConfig() {
     const getSelectedValue = (groupClass) => document.querySelector(`.${groupClass}.bg-blue-600`)?.dataset.type;
     const getSelectedPort = (groupClass) => document.querySelector(`.${groupClass}.bg-blue-600`)?.dataset.port;
     const getSelectedFormat = (groupClass) => document.querySelector(`.${groupClass}.bg-blue-600`)?.dataset.format;
@@ -512,58 +541,57 @@ function handleGenerateConfig() {
         return showToast('Please fill out all fields in the form.', 'warning');
     }
 
-    // Basic URI generation (more complex formats would need dedicated libraries)
     const remark = encodeURIComponent(`${selectedProxy.country} - ${selectedProxy.org}`);
-    let resultString = ``;
-
-    switch(vpnType) {
+    let baseConfigLink = ``;
+    switch (vpnType) {
         case 'vless':
-            resultString = `vless://${uuid}@${workerDomain}:${port}?path=%2F%3Fed%3D2048&security=tls&encryption=none&host=${workerDomain}&type=ws&sni=${workerDomain}#${remark}`;
+            baseConfigLink = `vless://${uuid}@${workerDomain}:${port}?path=%2F%3Fed%3D2048&security=tls&encryption=none&host=${workerDomain}&type=ws&sni=${workerDomain}#${remark}`;
             break;
         case 'trojan':
-            resultString = `trojan://${uuid}@${workerDomain}:${port}?security=tls&sni=${workerDomain}&type=ws&host=${workerDomain}&path=/#${remark}`;
+            baseConfigLink = `trojan://${uuid}@${workerDomain}:${port}?security=tls&sni=${workerDomain}&type=ws&host=${workerDomain}&path=/#${remark}`;
             break;
         case 'ss':
-             // Example for Shadowsocks, might need adjustment
             const ssPass = `${uuid}@${workerDomain}:${port}`;
             const encoded = btoa(ssPass);
-            resultString = `ss://${encoded}#${remark}`;
+            baseConfigLink = `ss://${encoded}#${remark}`;
             break;
     }
 
     const resultContent = document.getElementById('resultContent');
     const resultModal = document.getElementById('resultModal');
 
-    // Clear previous results
-    resultContent.innerHTML = '';
+    // Show loading indicator in the result modal
+    resultContent.innerHTML = `<div class="text-center p-4"><i class="fas fa-spinner fa-spin text-2xl text-blue-600"></i><p class="mt-2">Generating...</p></div>`;
+    document.getElementById('generateConfigModal').classList.add('hidden');
+    resultModal.classList.remove('hidden');
 
-    if (format === 'qrcode') {
-        if (resultString) {
-            // Create a container for the QR code to ensure proper centering and styling
+    try {
+        if (format === 'clash' || format === 'singbox') {
+            const finalResult = await convertToFormat([baseConfigLink], format);
+            resultContent.innerHTML = `<pre class="bg-gray-100 p-4 rounded-md text-sm break-all whitespace-pre-wrap">${finalResult}</pre>`;
+        } else if (format === 'qrcode') {
+            resultContent.innerHTML = ''; // Clear loading indicator
             const qrCodeContainer = document.createElement('div');
             qrCodeContainer.id = 'qrcode-container';
             qrCodeContainer.className = 'flex justify-center p-4';
             resultContent.appendChild(qrCodeContainer);
-
-            // Generate the QR Code
             new QRCode(qrCodeContainer, {
-                text: resultString,
+                text: baseConfigLink,
                 width: 256,
                 height: 256,
-                colorDark : "#000000",
-                colorLight : "#ffffff",
-                correctLevel : QRCode.CorrectLevel.H
+                colorDark: "#000000",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.H
             });
-        } else {
-            resultContent.innerHTML = `<p class="text-center text-red-500">Could not generate QR Code because the config string is empty.</p>`;
+        } else { // 'uri' format
+            resultContent.innerHTML = `<pre class="bg-gray-100 p-4 rounded-md text-sm break-all whitespace-pre-wrap">${baseConfigLink}</pre>`;
         }
-    } else {
-        // Handle URI and other text-based formats
-        resultContent.innerHTML = `<pre class="bg-gray-100 p-4 rounded-md text-sm break-all whitespace-pre-wrap">${resultString}</pre>`;
+    } catch (error) {
+        console.error('Configuration Generation Error:', error);
+        const errorMessage = error.message || 'An unknown error occurred.';
+        showToast(errorMessage, 'error');
+        resultContent.innerHTML = `<p class="text-center text-red-500 p-4">${errorMessage}</p>`;
     }
-
-    document.getElementById('generateConfigModal').classList.add('hidden');
-    resultModal.classList.remove('hidden');
 }
 
 async function copyResultToClipboard() {
