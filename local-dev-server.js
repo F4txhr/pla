@@ -80,7 +80,9 @@ const server = http.createServer((req, res) => {
             }
         } else {
             // Serve static files (HTML, CSS, JS)
-            const filePath = path.join(__dirname, urlPath === '/' ? 'index.html' : urlPath);
+            // Correctly handle the path by removing the leading slash from the URL path.
+            const safeUrlPath = urlPath === '/' ? 'index.html' : urlPath.substring(1);
+            const filePath = path.join(__dirname, safeUrlPath);
             const extname = String(path.extname(filePath)).toLowerCase();
             const mimeTypes = {
                 '.html': 'text/html',
