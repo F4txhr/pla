@@ -59,17 +59,19 @@ const server = http.createServer((req, res) => {
 
         // Route API requests to the corresponding serverless function
         if (urlPath.startsWith('/api/')) {
-            const functionName = urlPath.split('/')[2];
-            const functionPath = path.join(__dirname, 'api', `${functionName}.js`);
+            // New routing logic to handle nested paths like /api/tunnels/create
+            const apiPath = urlPath.substring(5); // Remove '/api/'
+            const functionPath = path.join(__dirname, 'api', `${apiPath}.js`);
+            const importPath = `./api/${apiPath}.js?t=${Date.now()}`; // Bust cache
 
             try {
                 if (fs.existsSync(functionPath)) {
-                    const { default: handler } = await import(`./api/${functionName}.js?t=${Date.now()}`); // Bust cache
+                    const { default: handler } = await import(importPath);
                     const resMock = createResMock(res);
                     await handler(req, resMock);
                 } else {
                     res.writeHead(404, { 'Content-Type': 'application/json' });
-                    res.end(JSON.stringify({ error: 'Function not found' }));
+                    res.end(JSON.stringify({ error: `Function not found for path: ${urlPath}` }));
                 }
             } catch (error) {
                 // Enhanced error logging to get more details

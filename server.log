@@ -1,0 +1,3 @@
+
+> vpn-manager-vercel@1.0.0 dev:local
+> node local-dev-server.js
