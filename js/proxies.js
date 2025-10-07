@@ -244,25 +244,7 @@ async function loadProxiesFromApi() {
     }
 }
 
-async function saveProxyStatusUpdates(updates) {
-    if (updates.length === 0) return;
-    try {
-        const response = await fetch('/api/proxies', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(updates)
-        });
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.details || 'Failed to save proxy statuses.');
-        }
-    } catch (error) {
-        console.error('Failed to save proxy status updates to API:', error);
-        showToast('Could not save proxy test results.', 'error');
-    }
-}
-
-// This new function updates a single proxy card in the UI without a full re-render.
+// This function updates a single proxy card in the UI without a full re-render.
 function updateProxyCard(proxy) {
     const cardElement = document.getElementById(`proxy-card-${proxy.id}`);
     if (cardElement) {
@@ -274,74 +256,91 @@ function updateProxyCard(proxy) {
     }
 }
 
-async function checkProxies(proxiesToCheck, isManualTrigger) {
-    if (isManualTrigger) {
-        showToast(`Testing ${proxiesToCheck.length} proxies...`, 'info');
-    }
+// Orchestrates the multi-stage proxy check process.
+async function checkProxies(proxiesToCheck) {
+    showToast(`Starting large-scale test of ${proxiesToCheck.length} proxies...`, 'info');
 
-    // Set status to 'testing' and update UI for each card individually
+    // Stage 1: Set UI to 'testing' for immediate feedback
     proxiesToCheck.forEach(p => {
         const proxy = allProxies.find(ap => ap.id === p.id);
         if (proxy) {
             proxy.status = 'testing';
-            updateProxyCard(proxy); // Update card to show 'testing' status
+            updateProxyCard(proxy);
         }
     });
 
-    const batchSize = 10;
-    for (let i = 0; i < proxiesToCheck.length; i += batchSize) {
-        const batch = proxiesToCheck.slice(i, i + batchSize);
-        // processHealthCheckBatch now handles its own UI updates
-        const updates = await processHealthCheckBatch(batch);
-        await saveProxyStatusUpdates(updates);
-        // No full render here, preventing the flicker.
+    // Stage 2: Process proxies in large batches via the backend endpoint
+    const largeBatchSize = 1000;
+    const batches = [];
+    for (let i = 0; i < proxiesToCheck.length; i += largeBatchSize) {
+        batches.push(proxiesToCheck.slice(i, i + largeBatchSize));
     }
 
-    if (isManualTrigger) {
-        showToast('All proxies have been tested.', 'success');
-    }
-}
+    showToast(`Split into ${batches.length} large batches. Processing in parallel...`, 'info');
 
-async function processHealthCheckBatch(batch) {
-    const healthChecks = batch.map(proxy => {
-        const url = `${API_BASE_URL}/health?proxy=${proxy.proxy_data}`;
-        return fetch(url)
-            .then(res => {
-                if (res.ok) return res.json();
-                return Promise.reject(new Error(`Health check failed with status ${res.status}`));
-            })
-            .then(data => ({ success: true, latency_ms: data.latency_ms || 0 }))
-            .catch(() => ({ success: false, latency_ms: 0 }));
+    const batchPromises = batches.map((batch, index) => {
+        return fetch('/api/check-batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(batch)
+        }).then(async res => {
+            if (!res.ok) {
+                const errorData = await res.json();
+                console.error(`Error processing batch ${index + 1}:`, errorData.details || res.statusText);
+                showToast(`Error processing batch ${index + 1}.`, 'error');
+                return Promise.reject(errorData);
+            }
+            showToast(`Batch ${index + 1} of ${batches.length} completed.`, 'info');
+            // We need to reload the data from the server to get the latest status
+            // This will be done after all batches complete.
+            return res.json();
+        });
     });
 
-    const results = await Promise.all(healthChecks);
-    const updatesForApi = [];
+    try {
+        await Promise.all(batchPromises);
+        showToast('Initial batch processing complete. Starting validation loop...', 'success');
 
-    results.forEach((result, index) => {
-        const proxyFromBatch = batch[index];
-        const proxyToUpdate = allProxies.find(p => p.id === proxyFromBatch.id);
+        // Stage 3: Validation Loop to catch any missed proxies
+        let unknownProxies = [];
+        let attempts = 0;
+        const maxAttempts = 10; // Failsafe to prevent infinite loops
 
-        if (proxyToUpdate) {
-            proxyToUpdate.status = result.success ? 'online' : 'offline';
-            proxyToUpdate.latency = result.latency_ms;
-            proxyToUpdate.last_checked = new Date().toISOString();
+        do {
+            attempts++;
+            showToast(`Validation attempt ${attempts}... Checking for missed proxies.`, 'info');
 
-            // Update the UI for this specific card smoothly.
-            updateProxyCard(proxyToUpdate);
+            const response = await fetch('/api/get-unknown-proxies');
+            unknownProxies = await response.json();
 
-            // Restore the full proxy data object for the upsert operation.
-            updatesForApi.push({
-                id: proxyToUpdate.id,
-                proxy_data: proxyToUpdate.proxy_data,
-                status: proxyToUpdate.status,
-                latency: proxyToUpdate.latency,
-                last_checked: proxyToUpdate.last_checked,
-                country: proxyToUpdate.country,
-                org: proxyToUpdate.org
-            });
+            if (unknownProxies.length > 0) {
+                showToast(`Found ${unknownProxies.length} missed proxies. Re-testing...`, 'warning');
+                // Re-check the missed proxies using the same batch endpoint
+                await fetch('/api/check-batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(unknownProxies)
+                });
+                // Small delay before next validation check
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+
+        } while (unknownProxies.length > 0 && attempts < maxAttempts);
+
+        if (attempts >= maxAttempts && unknownProxies.length > 0) {
+             showToast('Validation loop timed out. Some proxies may still be unknown.', 'error');
+        } else {
+             showToast('Validation complete. All proxies have been tested.', 'success');
         }
-    });
-    return updatesForApi;
+
+    } catch (error) {
+        console.error('One or more batches failed to process.', error);
+        showToast('An error occurred during the testing process. Please check the console.', 'error');
+    } finally {
+        // Final reload to ensure UI is 100% up-to-date
+        allProxies = await loadProxiesFromApi();
+        applyFiltersAndRender();
+    }
 }
 
 async function importProxies() {
