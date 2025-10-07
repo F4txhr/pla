@@ -314,12 +314,16 @@ async function processHealthCheckBatch(batch) {
             proxyToUpdate.latency = result.latency_ms;
             proxyToUpdate.last_checked = new Date().toISOString();
 
-            // Send only the necessary fields for the update for efficiency.
+            // Restore the full proxy data object for the upsert operation.
+            // This prevents "null value" errors if the upsert needs to perform an insert.
             updatesForApi.push({
                 id: proxyToUpdate.id,
+                proxy_data: proxyToUpdate.proxy_data,
                 status: proxyToUpdate.status,
                 latency: proxyToUpdate.latency,
-                last_checked: proxyToUpdate.last_checked
+                last_checked: proxyToUpdate.last_checked,
+                country: proxyToUpdate.country,
+                org: proxyToUpdate.org
             });
         }
     });
