@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "A VPN management dashboard deployed on Vercel with Supabase.",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "vercel dev",
     "dev:local": "node local-dev-server.js",

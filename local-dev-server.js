@@ -5,8 +5,16 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 
-// Load environment variables from a .env.local file
-import('dotenv').then(dotenv => dotenv.config({ path: '.env.local' }));
+// Load environment variables from a .env.local file SYNCHRONOUSLY
+// This is critical to ensure they are available before any other modules are loaded.
+import dotenv from 'dotenv';
+dotenv.config({ path: '.env.local' });
+
+// --- Diagnostic Logging ---
+console.log("--- Environment Variables ---");
+console.log("SUPABASE_URL:", process.env.SUPABASE_URL ? "Loaded" : "NOT LOADED");
+console.log("SUPABASE_ANON_KEY:", process.env.SUPABASE_ANON_KEY ? "Loaded" : "NOT LOADED");
+console.log("--------------------------");
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -64,9 +72,11 @@ const server = http.createServer((req, res) => {
                     res.end(JSON.stringify({ error: 'Function not found' }));
                 }
             } catch (error) {
-                console.error(`Error executing function ${functionName}:`, error);
+                // Enhanced error logging to get more details
+                console.error(`Error executing function ${functionName}:`, error.message);
+                console.error('Stack Trace:', error.stack);
                 res.writeHead(500, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: 'Internal Server Error' }));
+                res.end(JSON.stringify({ error: 'Internal Server Error', details: error.message }));
             }
         } else {
             // Serve static files (HTML, CSS, JS)

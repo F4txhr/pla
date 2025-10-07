@@ -6,6 +6,8 @@
     <title>VPN Proxy Manager - Proxy List</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Toastify CSS -->
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
     <style>
         /* Custom animations */
         @keyframes slideIn {
@@ -404,7 +406,7 @@
         <button class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
             <i class="fas fa-plus mr-2"></i>Add Proxy
         </button>
-        <button class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+        <button id="generateConfigBtn" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
             <i class="fas fa-file-export mr-2"></i>Generate Config
         </button>
     </div>
@@ -550,6 +552,8 @@
         </div>
     </div>
 
+    <!-- Toastify JS -->
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
     <script src="js/config.js"></script>
     <script src="js/app.js"></script>
     <script src="js/proxies.js"></script>
