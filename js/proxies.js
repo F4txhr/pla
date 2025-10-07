@@ -240,7 +240,9 @@ function renderPagination() {
 // --- API & Data Functions ---
 async function loadProxiesFromApi() {
     try {
-        const response = await fetch('/api/proxies');
+        // Add { cache: 'no-cache' } to force the browser to always fetch fresh data.
+        // This prevents the UI from getting stuck showing a 'testing' state from the cache.
+        const response = await fetch('/api/proxies', { cache: 'no-cache' });
         if (!response.ok) throw new Error(`Failed to fetch proxy data from API. Status: ${response.status}`);
         const proxies = await response.json();
         return proxies.map(p => {
@@ -384,7 +386,6 @@ async function importProxies() {
         document.getElementById('importModal').classList.add('hidden');
 
         applyFiltersAndRender();
-        checkProxies(processedProxies, true);
 
     } catch (error) {
         console.error('Import Error:', error);
