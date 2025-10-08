@@ -58,19 +58,19 @@ function setupProxyEventListeners() {
     // Restore search functionality
     addListener('searchInput', 'input', applyFiltersAndRender);
 
-    // Restore "Generate Config" functionality
-    addListener('generateConfigBtn', 'click', openGenerateConfigModal);
-    addListener('cancelGenerateBtn', 'click', () => document.getElementById('generateConfigModal').classList.add('hidden'));
-    addListener('confirmGenerateBtn', 'click', handleGenerateConfig);
-    addListener('generateUuidBtn', 'click', () => {
-        document.getElementById('uuidInput').value = generateUUID();
+    // Close popover when clicking outside
+    document.addEventListener('click', (e) => {
+        const popover = document.getElementById('generatePopover');
+        if (popover && !popover.classList.contains('hidden') && !popover.contains(e.target)) {
+            // Check if the click was on a generate button to avoid immediate closing
+            if (!e.target.closest('.proxy-card button')) {
+                popover.classList.add('hidden');
+            }
+        }
     });
-    addListener('closeResultBtn', 'click', () => document.getElementById('resultModal').classList.add('hidden'));
-    addListener('copyResultBtn', 'click', copyResultToClipboard);
 
-    document.querySelectorAll('.vpn-type-btn').forEach(btn => btn.addEventListener('click', () => handleButtonGroup(btn, 'vpn-type-btn')));
-    document.querySelectorAll('.port-btn').forEach(btn => btn.addEventListener('click', () => handleButtonGroup(btn, 'port-btn')));
-    document.querySelectorAll('.format-btn').forEach(btn => btn.addEventListener('click', () => handleButtonGroup(btn, 'format-btn')));
+    // Close QR Code modal
+    addListener('closeResultBtn', 'click', () => document.getElementById('resultModal').classList.add('hidden'));
 }
 
 // --- Filtering & Rendering ---
@@ -477,132 +477,111 @@ function selectProxy(proxyId) {
 }
 window.selectProxy = selectProxy;
 
+// --- Popover Logic ---
+
+let activeProxyIdForPopover = null;
+
 /**
- * Handles the "Generate Config" button click from within a proxy card.
- * It selects the proxy and opens the modal in one step.
+ * Shows and positions the generation popover next to the clicked button.
  * @param {Event} event - The click event.
- * @param {number} proxyId - The ID of the proxy to select.
+ * @param {number} proxyId - The ID of the proxy to configure.
  */
 function generateConfigForProxy(event, proxyId) {
-    event.stopPropagation(); // Prevent the card's main click event from firing
-    selectProxy(proxyId);
-    openGenerateConfigModal();
-}
-window.generateConfigForProxy = generateConfigForProxy;
+    event.stopPropagation();
+    const popover = document.getElementById('generatePopover');
+    const button = event.currentTarget;
 
-
-function openGenerateConfigModal() {
-    if (!selectedProxy) {
-        showToast('Please select a proxy first by clicking on its card.', 'warning');
+    // If the same button is clicked again while the popover is visible for it, just close it.
+    if (activeProxyIdForPopover === proxyId && !popover.classList.contains('hidden')) {
+        popover.classList.add('hidden');
         return;
     }
 
-    // Populate worker domains from the global 'tunnels' variable (from app.js)
-    const workerSelect = document.getElementById('workerDomainSelect');
-    workerSelect.innerHTML = '<option value="">Select a worker domain</option>';
-    if (window.tunnels && window.tunnels.length > 0) {
-        window.tunnels.forEach(tunnel => {
+    selectProxy(proxyId);
+    activeProxyIdForPopover = proxyId;
+
+    // Populate the tunnel dropdown
+    const tunnelSelect = document.getElementById('popoverTunnelSelect');
+    tunnelSelect.innerHTML = ''; // Clear old options
+    const onlineTunnels = window.tunnels ? window.tunnels.filter(t => t.status === 'online') : [];
+
+    if (onlineTunnels.length > 0) {
+        onlineTunnels.forEach(tunnel => {
             const option = document.createElement('option');
             option.value = tunnel.domain;
             option.textContent = tunnel.name;
-            workerSelect.appendChild(option);
+            tunnelSelect.appendChild(option);
         });
     } else {
-        workerSelect.innerHTML = '<option value="">No tunnels configured</option>';
+        tunnelSelect.innerHTML = '<option value="" disabled>No online tunnels</option>';
     }
 
-    // Set default UUID
-    document.getElementById('uuidInput').value = generateUUID();
+    // Position and show the popover
+    const rect = button.getBoundingClientRect();
+    popover.style.top = `${rect.bottom + window.scrollY + 5}px`; // Position below the button with a small gap
+    popover.style.left = `${rect.right - popover.offsetWidth + window.scrollX}px`; // Align to the right of the button
+    popover.classList.remove('hidden');
 
-    document.getElementById('generateConfigModal').classList.remove('hidden');
+    // Make sure the generate button is ready for a new click.
+    const generateBtn = document.getElementById('popoverGenerateBtn');
+    const newGenerateBtn = generateBtn.cloneNode(true); // Clone to remove old event listeners
+    generateBtn.parentNode.replaceChild(newGenerateBtn, generateBtn);
+    newGenerateBtn.addEventListener('click', handlePopoverGenerate);
 }
+window.generateConfigForProxy = generateConfigForProxy;
 
-function handleButtonGroup(selectedBtn, groupClass) {
-    document.querySelectorAll(`.${groupClass}`).forEach(btn => {
-        btn.classList.remove('bg-blue-600', 'text-white');
-        btn.classList.add('border-gray-300');
-    });
-    selectedBtn.classList.add('bg-blue-600', 'text-white');
-    selectedBtn.classList.remove('border-gray-300');
-}
+/**
+ * Handles the "Generate & Copy" button click from the popover.
+ */
+async function handlePopoverGenerate() {
+    const popover = document.getElementById('generatePopover');
+    const generateBtn = document.getElementById('popoverGenerateBtn');
 
-async function handleGenerateConfig() {
-    const getSelectedValue = (groupClass) => document.querySelector(`.${groupClass}.bg-blue-600`)?.dataset.type;
-    const getSelectedPort = (groupClass) => document.querySelector(`.${groupClass}.bg-blue-600`)?.dataset.port;
-    const getSelectedFormat = (groupClass) => document.querySelector(`.${groupClass}.bg-blue-600`)?.dataset.format;
-
-    const vpnType = getSelectedValue('vpn-type-btn');
-    const port = getSelectedPort('port-btn');
-    const format = getSelectedFormat('format-btn');
-    const workerDomain = document.getElementById('workerDomainSelect').value;
-    const uuid = document.getElementById('uuidInput').value;
-
-    if (!selectedProxy || !vpnType || !port || !format || !workerDomain || !uuid) {
-        return showToast('Please fill out all fields in the form.', 'warning');
-    }
-
-    const remark = encodeURIComponent(`${selectedProxy.country} - ${selectedProxy.org}`);
-    let baseConfigLink = ``;
-    switch (vpnType) {
-        case 'vless':
-            baseConfigLink = `vless://${uuid}@${workerDomain}:${port}?path=%2F%3Fed%3D2048&security=tls&encryption=none&host=${workerDomain}&type=ws&sni=${workerDomain}#${remark}`;
-            break;
-        case 'trojan':
-            baseConfigLink = `trojan://${uuid}@${workerDomain}:${port}?security=tls&sni=${workerDomain}&type=ws&host=${workerDomain}&path=/#${remark}`;
-            break;
-        case 'ss':
-            const ssPass = `${uuid}@${workerDomain}:${port}`;
-            const encoded = btoa(ssPass);
-            baseConfigLink = `ss://${encoded}#${remark}`;
-            break;
-    }
-
-    const resultContent = document.getElementById('resultContent');
-    const resultModal = document.getElementById('resultModal');
-
-    // Show loading indicator in the result modal
-    resultContent.innerHTML = `<div class="text-center p-4"><i class="fas fa-spinner fa-spin text-2xl text-blue-600"></i><p class="mt-2">Generating...</p></div>`;
-    document.getElementById('generateConfigModal').classList.add('hidden');
-    resultModal.classList.remove('hidden');
+    generateBtn.disabled = true;
+    generateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
 
     try {
+        const tunnelDomain = document.getElementById('popoverTunnelSelect').value;
+        const format = document.getElementById('popoverFormatSelect').value;
+
+        if (!selectedProxy || !tunnelDomain) {
+            throw new Error("No online tunnel selected.");
+        }
+
+        // For simplicity in the new UX, we'll standardize on Trojan, port 443.
+        const uuid = crypto.randomUUID();
+        const port = 443;
+        const remark = encodeURIComponent(`${selectedProxy.country} - ${selectedProxy.org}`);
+        const newPath = encodeURIComponent(`/${selectedProxy.proxyIP}-${port}`);
+        const baseConfigLink = `trojan://${uuid}@${tunnelDomain}:${port}?security=tls&sni=${tunnelDomain}&type=ws&host=${tunnelDomain}&path=${newPath}#${remark}`;
+
+        let finalResult = baseConfigLink;
+
         if (format === 'clash' || format === 'singbox') {
-            const finalResult = await convertToFormat([baseConfigLink], format);
-            resultContent.innerHTML = `<pre class="bg-gray-100 p-4 rounded-md text-sm break-all whitespace-pre-wrap">${finalResult}</pre>`;
+            finalResult = await convertToFormat([baseConfigLink], format);
         } else if (format === 'qrcode') {
-            resultContent.innerHTML = ''; // Clear loading indicator
+            const resultModal = document.getElementById('resultModal');
+            const resultContent = document.getElementById('resultContent');
+            resultContent.innerHTML = ''; // Clear previous
             const qrCodeContainer = document.createElement('div');
-            qrCodeContainer.id = 'qrcode-container';
             qrCodeContainer.className = 'flex justify-center p-4';
             resultContent.appendChild(qrCodeContainer);
-            new QRCode(qrCodeContainer, {
-                text: baseConfigLink,
-                width: 256,
-                height: 256,
-                colorDark: "#000000",
-                colorLight: "#ffffff",
-                correctLevel: QRCode.CorrectLevel.H
-            });
-        } else { // 'uri' format
-            resultContent.innerHTML = `<pre class="bg-gray-100 p-4 rounded-md text-sm break-all whitespace-pre-wrap">${baseConfigLink}</pre>`;
+            new QRCode(qrCodeContainer, { text: baseConfigLink, width: 256, height: 256 });
+            resultModal.classList.remove('hidden');
+            popover.classList.add('hidden'); // Hide popover
+            return; // Exit here for QR code flow
         }
-    } catch (error) {
-        console.error('Configuration Generation Error:', error);
-        const errorMessage = error.message || 'An unknown error occurred.';
-        showToast(errorMessage, 'error');
-        resultContent.innerHTML = `<p class="text-center text-red-500 p-4">${errorMessage}</p>`;
-    }
-}
 
-async function copyResultToClipboard() {
-    const resultText = document.querySelector('#resultContent pre')?.textContent;
-    if (resultText) {
-        try {
-            await navigator.clipboard.writeText(resultText);
-            showToast('Copied to clipboard!', 'success');
-        } catch (err) {
-            showToast('Failed to copy.', 'error');
-        }
+        await navigator.clipboard.writeText(finalResult);
+        showToast('Configuration copied to clipboard!', 'success');
+        popover.classList.add('hidden');
+
+    } catch (error) {
+        console.error("Popover generation error:", error);
+        showToast(error.message, 'error');
+    } finally {
+        generateBtn.disabled = false;
+        generateBtn.innerHTML = 'Generate & Copy';
     }
 }
 

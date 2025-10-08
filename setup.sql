@@ -53,6 +53,8 @@ CREATE TABLE tunnels (
     name VARCHAR(255) NOT NULL,
     domain TEXT,
     is_active BOOLEAN DEFAULT true NOT NULL,
+    status VARCHAR(50) DEFAULT 'unknown' NOT NULL,
+    last_checked TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
 
