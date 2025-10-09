@@ -240,22 +240,34 @@ async function deleteTunnel(tunnelId) {
 }
 
 async function checkSingleTunnelStatus(tunnel) {
-    // This check is temporary and only updates the UI state.
-    // The tunnel status is not persisted in the database.
+    let newStatus = 'offline'; // Default to offline
     try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000);
         // We use 'no-cors' as a simple way to check if the domain is reachable.
-        // A success response here doesn't guarantee the service is the correct one,
-        // but a failure strongly indicates an issue.
         await fetch(`https://${tunnel.domain}`, { signal: controller.signal, mode: 'no-cors' });
         clearTimeout(timeoutId);
-        tunnel.status = 'online';
+        newStatus = 'online';
     } catch (error) {
-        tunnel.status = 'offline';
+        // The status is already 'offline', so no action is needed here.
     }
-    // Re-render the list to show the updated status.
+
+    // Update the local object's status immediately for a responsive UI.
+    tunnel.status = newStatus;
+    // Re-render the list to show the updated status right away.
     renderTunnelList();
+
+    // Now, persist this new status to the database in the background.
+    try {
+        await fetch('/api/update-tunnel-status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: tunnel.id, status: newStatus }),
+        });
+    } catch (apiError) {
+        console.error(`Failed to persist tunnel status for ${tunnel.id}:`, apiError);
+        // Optional: could add logic here to revert the UI change if persistence fails.
+    }
 }
 
 // Expose functions to be called from HTML onclick attributes
