@@ -84,8 +84,7 @@ async function generateConfiguration() {
         const selectedProtocolValue = document.getElementById('protocolSelect').value;
         const count = parseInt(document.getElementById('countInput').value);
 
-        const now = Date.now();
-        let availableProxies = allProxies.filter(p => p.status === 'online' && (now - new Date(p.lastChecked).getTime()) < CACHE_DURATION_MS);
+        let availableProxies = allProxies.filter(p => p.status === 'online');
         if (selectedCountry !== 'any') {
             availableProxies = availableProxies.filter(p => p.country === selectedCountry);
         }

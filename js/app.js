@@ -80,10 +80,15 @@ async function loadTunnelsFromApi() {
     try {
         const response = await fetch('/api/tunnels');
         if (!response.ok) throw new Error('Failed to fetch tunnels from API');
-        tunnels = await response.json();
+        const tunnelData = await response.json();
+        // Assign to both the module-scoped variable and the global window object
+        // so other scripts (like proxies.js) can access it.
+        tunnels = tunnelData;
+        window.tunnels = tunnelData;
     } catch (error) {
         console.error('Error loading tunnels:', error);
         tunnels = []; // Fallback to an empty array on error
+        window.tunnels = [];
     }
 }
 
