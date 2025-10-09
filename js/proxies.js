@@ -491,7 +491,7 @@ function generateConfigForProxy(event, proxyId) {
     const popover = document.getElementById('generatePopover');
     const button = event.currentTarget;
 
-    // If the same button is clicked again while the popover is visible for it, just close it.
+    // If the same button is clicked again, just close the popover.
     if (activeProxyIdForPopover === proxyId && !popover.classList.contains('hidden')) {
         popover.classList.add('hidden');
         return;
@@ -502,7 +502,7 @@ function generateConfigForProxy(event, proxyId) {
 
     // Populate the tunnel dropdown
     const tunnelSelect = document.getElementById('popoverTunnelSelect');
-    tunnelSelect.innerHTML = ''; // Clear old options
+    tunnelSelect.innerHTML = '';
     const onlineTunnels = window.tunnels ? window.tunnels.filter(t => t.status === 'online') : [];
 
     if (onlineTunnels.length > 0) {
@@ -516,72 +516,78 @@ function generateConfigForProxy(event, proxyId) {
         tunnelSelect.innerHTML = '<option value="" disabled>No online tunnels</option>';
     }
 
-    // Position and show the popover
+    // --- Smart Popover Positioning ---
     const rect = button.getBoundingClientRect();
-    popover.style.top = `${rect.bottom + window.scrollY + 5}px`; // Position below the button with a small gap
-    popover.style.left = `${rect.right - popover.offsetWidth + window.scrollX}px`; // Align to the right of the button
+    const popoverWidth = popover.offsetWidth;
+    const windowWidth = window.innerWidth;
+
+    // Position it vertically below the button
+    popover.style.top = `${rect.bottom + window.scrollY + 5}px`;
+
+    // Try to align the popover's right edge with the button's right edge
+    let leftPosition = rect.right - popoverWidth;
+
+    // If aligning to the right makes it go off-screen to the left, align to the left edge of the screen instead.
+    if (leftPosition < 10) { // 10px margin
+        leftPosition = 10;
+    }
+
+    popover.style.left = `${leftPosition + window.scrollX}px`;
     popover.classList.remove('hidden');
 
-    // Make sure the generate button is ready for a new click.
-    const generateBtn = document.getElementById('popoverGenerateBtn');
-    const newGenerateBtn = generateBtn.cloneNode(true); // Clone to remove old event listeners
-    generateBtn.parentNode.replaceChild(newGenerateBtn, generateBtn);
-    newGenerateBtn.addEventListener('click', handlePopoverGenerate);
+    // Add event listeners to the new protocol buttons
+    popover.querySelectorAll('.popover-protocol-btn').forEach(btn => {
+        const newBtn = btn.cloneNode(true);
+        btn.parentNode.replaceChild(newBtn, btn);
+        newBtn.addEventListener('click', (e) => {
+            const protocol = e.currentTarget.dataset.protocol;
+            generateAndCopyConfig(protocol);
+        });
+    });
 }
 window.generateConfigForProxy = generateConfigForProxy;
 
 /**
- * Handles the "Generate & Copy" button click from the popover.
+ * Generates a config URI for the selected protocol and copies it to the clipboard.
+ * @param {string} protocol - The selected protocol ('vless', 'trojan', or 'ss').
  */
-async function handlePopoverGenerate() {
+async function generateAndCopyConfig(protocol) {
     const popover = document.getElementById('generatePopover');
-    const generateBtn = document.getElementById('popoverGenerateBtn');
-
-    generateBtn.disabled = true;
-    generateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-
     try {
         const tunnelDomain = document.getElementById('popoverTunnelSelect').value;
-        const format = document.getElementById('popoverFormatSelect').value;
-
         if (!selectedProxy || !tunnelDomain) {
             throw new Error("No online tunnel selected.");
         }
 
-        // For simplicity in the new UX, we'll standardize on Trojan, port 443.
         const uuid = crypto.randomUUID();
         const port = 443;
         const remark = encodeURIComponent(`${selectedProxy.country} - ${selectedProxy.org}`);
         const newPath = encodeURIComponent(`/${selectedProxy.proxyIP}-${port}`);
-        const baseConfigLink = `trojan://${uuid}@${tunnelDomain}:${port}?security=tls&sni=${tunnelDomain}&type=ws&host=${tunnelDomain}&path=${newPath}#${remark}`;
+        let configLink = '';
 
-        let finalResult = baseConfigLink;
-
-        if (format === 'clash' || format === 'singbox') {
-            finalResult = await convertToFormat([baseConfigLink], format);
-        } else if (format === 'qrcode') {
-            const resultModal = document.getElementById('resultModal');
-            const resultContent = document.getElementById('resultContent');
-            resultContent.innerHTML = ''; // Clear previous
-            const qrCodeContainer = document.createElement('div');
-            qrCodeContainer.className = 'flex justify-center p-4';
-            resultContent.appendChild(qrCodeContainer);
-            new QRCode(qrCodeContainer, { text: baseConfigLink, width: 256, height: 256 });
-            resultModal.classList.remove('hidden');
-            popover.classList.add('hidden'); // Hide popover
-            return; // Exit here for QR code flow
+        switch (protocol) {
+            case 'vless':
+                configLink = `vless://${uuid}@${tunnelDomain}:${port}?path=${newPath}&security=tls&encryption=none&host=${tunnelDomain}&type=ws&sni=${tunnelDomain}#${remark}`;
+                break;
+            case 'trojan':
+                configLink = `trojan://${uuid}@${tunnelDomain}:${port}?security=tls&sni=${tunnelDomain}&type=ws&host=${tunnelDomain}&path=${newPath}#${remark}`;
+                break;
+            case 'ss':
+                const encodedPassword = btoa(`chacha20-ietf-poly1305:${uuid}`);
+                configLink = `ss://${encodedPassword}@${tunnelDomain}:${port}?plugin=v2ray-plugin;mode=websocket;path=${newPath};host=${tunnelDomain};tls;sni=${tunnelDomain}#${remark}`;
+                break;
+            default:
+                throw new Error("Invalid protocol selected.");
         }
 
-        await navigator.clipboard.writeText(finalResult);
-        showToast('Configuration copied to clipboard!', 'success');
+        await navigator.clipboard.writeText(configLink);
+        showToast(`${protocol.toUpperCase()} config copied!`, 'success');
         popover.classList.add('hidden');
 
     } catch (error) {
-        console.error("Popover generation error:", error);
+        console.error("Config generation error:", error);
         showToast(error.message, 'error');
-    } finally {
-        generateBtn.disabled = false;
-        generateBtn.innerHTML = 'Generate & Copy';
+        popover.classList.add('hidden');
     }
 }
 
