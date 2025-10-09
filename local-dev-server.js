@@ -21,25 +21,32 @@ const __dirname = path.dirname(__filename);
 
 const PORT = process.env.PORT || 3000;
 
-// A simple mock for the Vercel response object
-// It mimics the methods used in the serverless functions (status, json, setHeader)
-const createResMock = (res) => ({
-    ...res,
-    statusCode: 200,
-    headers: {},
-    status(code) {
-        this.statusCode = code;
-        return this;
-    },
-    json(data) {
-        this.setHeader('Content-Type', 'application/json');
-        res.writeHead(this.statusCode, this.headers);
-        res.end(JSON.stringify(data));
-    },
-    setHeader(name, value) {
-        this.headers[name] = value;
-    },
-});
+// A more robust mock for the Vercel response object that supports chaining.
+const createResMock = (res) => {
+    let statusCode = 200;
+    const headers = {};
+
+    const resMock = {
+        status(code) {
+            statusCode = code;
+            return this; // Return the object to allow chaining
+        },
+        setHeader(name, value) {
+            headers[name] = value;
+            return this;
+        },
+        send(data) {
+            res.writeHead(statusCode, headers);
+            res.end(data);
+        },
+        json(data) {
+            this.setHeader('Content-Type', 'application/json');
+            res.writeHead(statusCode, headers);
+            res.end(JSON.stringify(data));
+        },
+    };
+    return resMock;
+};
 
 const server = http.createServer((req, res) => {
     // This is the crucial fix: we need to parse the request body for POST/PATCH requests
@@ -59,19 +66,17 @@ const server = http.createServer((req, res) => {
 
         // Route API requests to the corresponding serverless function
         if (urlPath.startsWith('/api/')) {
-            // New routing logic to handle nested paths like /api/tunnels/create
-            const apiPath = urlPath.substring(5); // Remove '/api/'
-            const functionPath = path.join(__dirname, 'api', `${apiPath}.js`);
-            const importPath = `./api/${apiPath}.js?t=${Date.now()}`; // Bust cache
+            const functionName = urlPath.split('/')[2];
+            const functionPath = path.join(__dirname, 'api', `${functionName}.js`);
 
             try {
                 if (fs.existsSync(functionPath)) {
-                    const { default: handler } = await import(importPath);
+                    const { default: handler } = await import(`./api/${functionName}.js?t=${Date.now()}`); // Bust cache
                     const resMock = createResMock(res);
                     await handler(req, resMock);
                 } else {
                     res.writeHead(404, { 'Content-Type': 'application/json' });
-                    res.end(JSON.stringify({ error: `Function not found for path: ${urlPath}` }));
+                    res.end(JSON.stringify({ error: 'Function not found' }));
                 }
             } catch (error) {
                 // Enhanced error logging to get more details
