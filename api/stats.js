@@ -15,7 +15,8 @@ export default async function handler(request, response) {
             { count: totalProxies, error: proxiesError },
             { count: onlineProxies, error: onlineProxiesError },
             { count: totalAccounts, error: accountsError },
-            { count: activeTunnels, error: tunnelsError },
+            // UPDATED: Get total tunnels count, as 'is_active' is no longer a column.
+            { count: totalTunnels, error: tunnelsError },
             { data: lastUpdatedData, error: lastUpdatedError }
         ] = await Promise.all([
             // Get the total count of all proxies
@@ -24,8 +25,8 @@ export default async function handler(request, response) {
             supabase.from('proxies').select('*', { count: 'exact', head: true }).eq('status', 'online'),
             // Get the total count of all accounts
             supabase.from('accounts').select('*', { count: 'exact', head: true }),
-            // Get the count of tunnels marked as active
-            supabase.from('tunnels').select('*', { count: 'exact', head: true }).eq('is_active', true),
+            // UPDATED: Query for all tunnels, not just 'active' ones.
+            supabase.from('tunnels').select('*', { count: 'exact', head: true }),
             // Get the last updated timestamp from the metadata table
             supabase.from('metadata').select('value').eq('key', 'last_updated_timestamp').single()
         ]);
@@ -46,7 +47,8 @@ export default async function handler(request, response) {
             totalProxies: totalProxies || 0,
             onlineProxies: onlineProxies || 0,
             totalAccounts: totalAccounts || 0,
-            activeTunnels: activeTunnels || 0,
+            // UPDATED: Changed from 'activeTunnels' to 'totalTunnels'.
+            totalTunnels: totalTunnels || 0,
             // The value is stored in a 'value' property, extract it or return null
             lastUpdated: lastUpdatedData ? lastUpdatedData.value : null,
         };

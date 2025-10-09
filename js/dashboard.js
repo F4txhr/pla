@@ -32,7 +32,7 @@ async function updateDashboardStats() {
         // Animate the numerical values
         animateValue('totalProxies', stats.totalProxies);
         animateValue('onlineProxies', stats.onlineProxies);
-        animateValue('activeTunnels', stats.activeTunnels);
+        animateValue('totalTunnels', stats.totalTunnels);
         animateValue('totalAccounts', stats.totalAccounts);
 
         // Update the last updated timestamp
