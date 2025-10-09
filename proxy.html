@@ -214,7 +214,6 @@
                         <a href="index.html" class="text-gray-600 hover:text-blue-600 px-3 py-2 text-sm font-medium transition-colors">Dashboard</a>
                         <a href="proxy.html" class="text-blue-600 px-3 py-2 text-sm font-medium border-b-2 border-blue-600">Proxies</a>
                         <a href="subscription.html" class="text-gray-600 hover:text-blue-600 px-3 py-2 text-sm font-medium transition-colors">Subscribe</a>
-                        <a href="accounts.html" class="text-gray-600 hover:text-blue-600 px-3 py-2 text-sm font-medium transition-colors">Accounts</a>
                     </div>
                 </div>
                 
@@ -261,32 +260,6 @@
                     <button id="themeToggle" class="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
                         <i class="fas fa-moon text-lg"></i>
                     </button>
-                    
-                    <!-- User Menu -->
-                    <div class="relative">
-                        <button id="userMenuBtn" class="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100 transition-colors">
-                            <img src="https://picsum.photos/seed/user/32/32.jpg" alt="User" class="w-8 h-8 rounded-full">
-                            <i class="fas fa-chevron-down text-xs text-gray-600"></i>
-                        </button>
-                        
-                        <!-- Dropdown Menu -->
-                        <div id="userMenu" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-2">
-                            <a href="profile.html" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                <i class="fas fa-tachometer-alt mr-2"></i>Dashboard
-                            </a>
-                            <hr class="my-2">
-                            <a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                <i class="fas fa-user mr-2"></i>Profile
-                            </a>
-                            <a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                <i class="fas fa-cog mr-2"></i>Settings
-                            </a>
-                            <hr class="my-2">
-                            <a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                <i class="fas fa-sign-out-alt mr-2"></i>Logout
-                            </a>
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>
@@ -494,22 +467,6 @@
                     <button id="cancelGenerateBtn" class="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">Cancel</button>
                     <button id="confirmGenerateBtn" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">Generate</button>
                 </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Generate Config Popover -->
-    <div id="generatePopover" class="hidden absolute bg-white rounded-lg shadow-xl border w-64 z-50">
-        <div class="p-3">
-            <div class="mb-3">
-                <label class="block text-xs font-medium text-gray-600 mb-1">Tunnel</label>
-                <select id="popoverTunnelSelect" class="w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
-            </div>
-            <div class="space-y-2">
-                <p class="text-xs font-medium text-gray-600">Copy as:</p>
-                <button data-protocol="vless" class="popover-protocol-btn w-full px-4 py-2 bg-gray-100 text-gray-800 text-sm rounded-md hover:bg-blue-100 hover:text-blue-700 transition-colors">VLESS</button>
-                <button data-protocol="trojan" class="popover-protocol-btn w-full px-4 py-2 bg-gray-100 text-gray-800 text-sm rounded-md hover:bg-blue-100 hover:text-blue-700 transition-colors">Trojan</button>
-                <button data-protocol="ss" class="popover-protocol-btn w-full px-4 py-2 bg-gray-100 text-gray-800 text-sm rounded-md hover:bg-blue-100 hover:text-blue-700 transition-colors">Shadowsocks</button>
             </div>
         </div>
     </div>

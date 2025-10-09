@@ -21,32 +21,25 @@ const __dirname = path.dirname(__filename);
 
 const PORT = process.env.PORT || 3000;
 
-// A more robust mock for the Vercel response object that supports chaining.
-const createResMock = (res) => {
-    let statusCode = 200;
-    const headers = {};
-
-    const resMock = {
-        status(code) {
-            statusCode = code;
-            return this; // Return the object to allow chaining
-        },
-        setHeader(name, value) {
-            headers[name] = value;
-            return this;
-        },
-        send(data) {
-            res.writeHead(statusCode, headers);
-            res.end(data);
-        },
-        json(data) {
-            this.setHeader('Content-Type', 'application/json');
-            res.writeHead(statusCode, headers);
-            res.end(JSON.stringify(data));
-        },
-    };
-    return resMock;
-};
+// A simple mock for the Vercel response object
+// It mimics the methods used in the serverless functions (status, json, setHeader)
+const createResMock = (res) => ({
+    ...res,
+    statusCode: 200,
+    headers: {},
+    status(code) {
+        this.statusCode = code;
+        return this;
+    },
+    json(data) {
+        this.setHeader('Content-Type', 'application/json');
+        res.writeHead(this.statusCode, this.headers);
+        res.end(JSON.stringify(data));
+    },
+    setHeader(name, value) {
+        this.headers[name] = value;
+    },
+});
 
 const server = http.createServer((req, res) => {
     // This is the crucial fix: we need to parse the request body for POST/PATCH requests

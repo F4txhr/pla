@@ -201,11 +201,6 @@ function createProxyCardHTML(proxy) {
                     <div class="text-sm text-gray-600"><i class="fas fa-network-wired mr-2"></i>Port: <span class="font-medium">${proxy.proxyPort}</span></div>
                     <div class="text-sm ${latencyClass}"><i class="fas fa-clock mr-2"></i>Latency: <span class="font-medium">${latencyText}</span></div>
                 </div>
-                <div class="border-t border-gray-200 pt-3 flex justify-end">
-                    <button onclick="generateConfigForProxy(event, ${proxy.id})" class="text-xs font-medium text-blue-600 hover:text-blue-800 transition-colors">
-                        <i class="fas fa-file-export mr-1"></i> Generate Config
-                    </button>
-                </div>
             </div>
         </div>
     `;
@@ -466,124 +461,6 @@ function selectProxy(proxyId) {
     }
 }
 window.selectProxy = selectProxy;
-
-// --- Popover Logic ---
-
-let activeProxyIdForPopover = null;
-
-/**
- * Shows and positions the generation popover next to the clicked button.
- * @param {Event} event - The click event.
- * @param {number} proxyId - The ID of the proxy to configure.
- */
-function generateConfigForProxy(event, proxyId) {
-    event.stopPropagation();
-    const popover = document.getElementById('generatePopover');
-    const button = event.currentTarget;
-
-    // If the same button is clicked again, just close the popover.
-    if (activeProxyIdForPopover === proxyId && !popover.classList.contains('hidden')) {
-        popover.classList.add('hidden');
-        return;
-    }
-
-    selectProxy(proxyId);
-    activeProxyIdForPopover = proxyId;
-
-    // Populate the tunnel dropdown
-    const tunnelSelect = document.getElementById('popoverTunnelSelect');
-    tunnelSelect.innerHTML = '';
-    const onlineTunnels = window.tunnels ? window.tunnels.filter(t => t.status === 'online') : [];
-
-    if (onlineTunnels.length > 0) {
-        onlineTunnels.forEach(tunnel => {
-            const option = document.createElement('option');
-            option.value = tunnel.domain;
-            option.textContent = tunnel.name;
-            tunnelSelect.appendChild(option);
-        });
-    } else {
-        tunnelSelect.innerHTML = '<option value="" disabled>No online tunnels</option>';
-    }
-
-    // --- Smart Popover Positioning ---
-    const rect = button.getBoundingClientRect();
-    const popoverWidth = popover.offsetWidth;
-    const windowWidth = window.innerWidth;
-
-    // Position it vertically below the button
-    popover.style.top = `${rect.bottom + window.scrollY + 5}px`;
-
-    // Try to align the popover's right edge with the button's right edge
-    let leftPosition = rect.right - popoverWidth;
-
-    // If aligning to the right makes it go off-screen to the left, align to the left edge of the screen instead.
-    if (leftPosition < 10) { // 10px margin
-        leftPosition = 10;
-    }
-
-    popover.style.left = `${leftPosition + window.scrollX}px`;
-    popover.classList.remove('hidden');
-
-    // Add event listeners to the new protocol buttons
-    popover.querySelectorAll('.popover-protocol-btn').forEach(btn => {
-        const newBtn = btn.cloneNode(true);
-        btn.parentNode.replaceChild(newBtn, btn);
-        newBtn.addEventListener('click', (e) => {
-            const protocol = e.currentTarget.dataset.protocol;
-            generateAndCopyConfig(protocol);
-        });
-    });
-}
-window.generateConfigForProxy = generateConfigForProxy;
-
-/**
- * Generates a config URI for the selected protocol and copies it to the clipboard.
- * @param {string} protocol - The selected protocol ('vless', 'trojan', or 'ss').
- */
-async function generateAndCopyConfig(protocol) {
-    const popover = document.getElementById('generatePopover');
-    try {
-        const tunnelDomain = document.getElementById('popoverTunnelSelect').value;
-        if (!selectedProxy || !tunnelDomain) {
-            throw new Error("No online tunnel selected.");
-        }
-
-        const uuid = crypto.randomUUID();
-        const port = 443;
-        const remark = encodeURIComponent(`${selectedProxy.country} - ${selectedProxy.org}`);
-        const newPath = encodeURIComponent(`/${selectedProxy.proxyIP}-${port}`);
-        let configLink = '';
-
-        switch (protocol) {
-            case 'vless':
-                configLink = `vless://${uuid}@${tunnelDomain}:${port}?path=${newPath}&security=tls&encryption=none&host=${tunnelDomain}&type=ws&sni=${tunnelDomain}#${remark}`;
-                break;
-            case 'trojan':
-                configLink = `trojan://${uuid}@${tunnelDomain}:${port}?security=tls&sni=${tunnelDomain}&type=ws&host=${tunnelDomain}&path=${newPath}#${remark}`;
-                break;
-            case 'ss':
-                const encodedPassword = btoa(`chacha20-ietf-poly1305:${uuid}`);
-                configLink = `ss://${encodedPassword}@${tunnelDomain}:${port}?plugin=v2ray-plugin;mode=websocket;path=${newPath};host=${tunnelDomain};tls;sni=${tunnelDomain}#${remark}`;
-                break;
-            default:
-                throw new Error("Invalid protocol selected.");
-        }
-
-        await navigator.clipboard.writeText(configLink);
-        showToast(`${protocol.toUpperCase()} config copied!`, 'success');
-        popover.classList.add('hidden');
-
-    } catch (error) {
-        console.error("Config generation error:", error);
-        showToast(error.message, 'error');
-        popover.classList.add('hidden');
-    }
-}
-
-function generateUUID() {
-    return crypto.randomUUID();
-}
 
 function openGenerateConfigModal() {
     if (!selectedProxy) {

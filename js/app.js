@@ -80,15 +80,10 @@ async function loadTunnelsFromApi() {
     try {
         const response = await fetch('/api/tunnels');
         if (!response.ok) throw new Error('Failed to fetch tunnels from API');
-        const tunnelData = await response.json();
-        // Assign to both the module-scoped variable and the global window object
-        // so other scripts (like proxies.js) can access it.
-        tunnels = tunnelData;
-        window.tunnels = tunnelData;
+        tunnels = await response.json();
     } catch (error) {
         console.error('Error loading tunnels:', error);
         tunnels = []; // Fallback to an empty array on error
-        window.tunnels = [];
     }
 }
 
@@ -157,49 +152,61 @@ async function saveTunnel(e) {
     e.preventDefault();
     const name = document.getElementById('tunnelName').value;
     const domain = document.getElementById('tunnelDomain').value;
+    let tunnelToCheck = null;
 
     try {
-        let response;
         if (editingTunnelId) {
-            // UPDATE path: send a PATCH request to the single /api/tunnels endpoint
-            response = await fetch('/api/tunnels', {
-                method: 'PATCH',
+            // EDIT PATH: Use the new, efficient update endpoint.
+            const response = await fetch('/api/tunnels/update', {
+                method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: editingTunnelId, name, domain })
             });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to update tunnel');
+            }
+
+            const updatedTunnel = await response.json();
+            const index = tunnels.findIndex(t => t.id === updatedTunnel.id);
+            if (index !== -1) {
+                tunnels[index] = updatedTunnel;
+            }
+            tunnelToCheck = updatedTunnel;
         } else {
-            // CREATE path: send a POST request to the single /api/tunnels endpoint
-            response = await fetch('/api/tunnels', {
+            // CREATE PATH: This uses the new, efficient endpoint.
+            const response = await fetch('/api/tunnels/create', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name, domain })
             });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to create tunnel');
+            }
+
+            const createdTunnel = await response.json();
+            tunnels.push(createdTunnel);
+            tunnelToCheck = createdTunnel;
         }
 
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.details || 'Failed to save tunnel.');
-        }
-
-        // Instead of manually manipulating the array, reload the entire list
-        // from the database to ensure UI is perfectly in sync.
-        await loadTunnelsFromApi();
         renderTunnelList();
         document.getElementById('tunnelModal').classList.add('hidden');
 
-        // Check the status of the newly saved tunnel.
-        const savedTunnel = await response.json();
-        const tunnelToCheck = tunnels.find(t => t.id === savedTunnel.id);
+        // If a tunnel was created or updated, check its status.
         if (tunnelToCheck) {
             await checkSingleTunnelStatus(tunnelToCheck);
         }
     } catch (error) {
         console.error('Error saving tunnel:', error);
-        alert(`Error: ${error.message}`);
+        alert(`Error: ${error.message}`); // Provide feedback to the user
     }
 }
 
 function editTunnel(tunnelId) {
+    // The ID from the onclick attribute is a string, but the ID in the `tunnels` array is a number.
     const idAsNumber = parseInt(tunnelId, 10);
     const tunnel = tunnels.find(t => t.id === idAsNumber);
     if (!tunnel) {
@@ -207,7 +214,7 @@ function editTunnel(tunnelId) {
         return;
     }
 
-    editingTunnelId = idAsNumber;
+    editingTunnelId = idAsNumber; // Store the ID as a number
     document.getElementById('tunnelModalTitle').textContent = 'Edit Tunnel';
     document.getElementById('tunnelName').value = tunnel.name;
     document.getElementById('tunnelDomain').value = tunnel.domain;
@@ -215,6 +222,7 @@ function editTunnel(tunnelId) {
 }
 
 function confirmDeleteTunnel(tunnelId) {
+    // The ID from the onclick attribute is a string.
     const idAsNumber = parseInt(tunnelId, 10);
     if (confirm('Are you sure you want to delete this tunnel?')) {
         deleteTunnel(idAsNumber);
@@ -223,19 +231,19 @@ function confirmDeleteTunnel(tunnelId) {
 
 async function deleteTunnel(tunnelId) {
     try {
-        const response = await fetch('/api/tunnels', {
-            method: 'DELETE',
+        const response = await fetch('/api/tunnels/delete', {
+            method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ id: tunnelId })
         });
 
         if (!response.ok) {
             const errorData = await response.json();
-            throw new Error(errorData.details || 'Failed to delete tunnel.');
+            throw new Error(errorData.error || 'Failed to delete tunnel');
         }
 
-        // After a successful delete, reload the list from the database.
-        await loadTunnelsFromApi();
+        // On successful deletion from the DB, remove the tunnel from the local array.
+        tunnels = tunnels.filter(t => t.id !== tunnelId);
         renderTunnelList();
 
     } catch (error) {
@@ -245,34 +253,22 @@ async function deleteTunnel(tunnelId) {
 }
 
 async function checkSingleTunnelStatus(tunnel) {
-    let newStatus = 'offline'; // Default to offline
+    // This check is temporary and only updates the UI state.
+    // The tunnel status is not persisted in the database.
     try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000);
         // We use 'no-cors' as a simple way to check if the domain is reachable.
+        // A success response here doesn't guarantee the service is the correct one,
+        // but a failure strongly indicates an issue.
         await fetch(`https://${tunnel.domain}`, { signal: controller.signal, mode: 'no-cors' });
         clearTimeout(timeoutId);
-        newStatus = 'online';
+        tunnel.status = 'online';
     } catch (error) {
-        // The status is already 'offline', so no action is needed here.
+        tunnel.status = 'offline';
     }
-
-    // Update the local object's status immediately for a responsive UI.
-    tunnel.status = newStatus;
-    // Re-render the list to show the updated status right away.
+    // Re-render the list to show the updated status.
     renderTunnelList();
-
-    // Now, persist this new status to the database in the background.
-    try {
-        await fetch('/api/update-tunnel-status', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: tunnel.id, status: newStatus }),
-        });
-    } catch (apiError) {
-        console.error(`Failed to persist tunnel status for ${tunnel.id}:`, apiError);
-        // Optional: could add logic here to revert the UI change if persistence fails.
-    }
 }
 
 // Expose functions to be called from HTML onclick attributes
