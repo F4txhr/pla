@@ -36,6 +36,12 @@ const createResMock = (res) => ({
         res.writeHead(this.statusCode, this.headers);
         res.end(JSON.stringify(data));
     },
+    // Add the .send() method to be compatible with API functions that
+    // use it, like for 204 No Content responses.
+    send() {
+        res.writeHead(this.statusCode, this.headers);
+        res.end();
+    },
     setHeader(name, value) {
         this.headers[name] = value;
     },

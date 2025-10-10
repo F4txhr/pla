@@ -2,6 +2,13 @@
 // Subscription Page Logic
 // =================================================================================
 
+// How long to consider a proxy's status "recent" before it's considered stale.
+// 4 hours = 4 * 60 * 60 * 1000 = 14,400,000 ms
+const CACHE_DURATION_MS = 14400000;
+
+// The external API for converting configurations to different formats.
+const API_BASE_URL = 'https://cfanalistik.up.railway.app';
+
 document.addEventListener('DOMContentLoaded', () => {
     loadInitialData();
     setupSubscriptionEventListeners();
@@ -79,8 +86,9 @@ async function generateConfiguration() {
         const selectedProtocolValue = document.getElementById('protocolSelect').value;
         const count = parseInt(document.getElementById('countInput').value);
 
-        const now = Date.now();
-        let availableProxies = allProxies.filter(p => p.status === 'online' && (now - new Date(p.lastChecked).getTime()) < CACHE_DURATION_MS);
+        // Filter proxies to only include those marked as 'online' in the database.
+        // The time-based cache is removed as per the user's request for more accurate, real-time data.
+        let availableProxies = allProxies.filter(p => p.status === 'online');
         if (selectedCountry !== 'any') {
             availableProxies = availableProxies.filter(p => p.country === selectedCountry);
         }
