@@ -88,7 +88,8 @@ async function handlePatch(request, response) {
 
 async function handleDelete(request, response) {
     try {
-        const { id } = request.body;
+        // ID is passed as a query parameter, e.g., /api/tunnels?id=123
+        const { id } = request.query;
         if (!id) {
             return response.status(400).json({ error: 'ID is required.' });
         }
