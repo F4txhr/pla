@@ -9,19 +9,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function loadInitialData() {
     try {
-        // Fetch both proxies and tunnels in parallel for faster loading
-        const [proxyResponse, tunnelResponse] = await Promise.all([
-            fetch('/api/proxies'),
-            fetch('/api/tunnels')
-        ]);
+        // Tunnels are now loaded globally by app.js. We only need to fetch proxies here.
+        const proxyResponse = await fetch('/api/proxies');
 
         if (!proxyResponse.ok) throw new Error('Failed to fetch proxy data from API.');
-        if (!tunnelResponse.ok) throw new Error('Failed to fetch tunnel data from API.');
 
         const allProxies = await proxyResponse.json();
-        const tunnels = await tunnelResponse.json();
 
-        populateSelects(allProxies, tunnels);
+        // Use the globally loaded tunnels from window.tunnels, fall back to an empty array.
+        populateSelects(allProxies, window.tunnels || []);
     } catch (error) {
         console.error(error);
         alert('Could not load initial data. Please ensure proxies have been imported and tunnels are configured.');
@@ -74,10 +70,9 @@ async function generateConfiguration() {
     generateBtn.disabled = true;
 
     try {
-        const [allProxies, tunnels] = await Promise.all([
-            (await fetch('/api/proxies')).json(),
-            (await fetch('/api/tunnels')).json()
-        ]);
+        // Tunnels are global now, so we only need to fetch proxies.
+        const allProxies = await (await fetch('/api/proxies')).json();
+        const tunnels = window.tunnels || [];
 
         const selectedHostValue = document.getElementById('hostSelect').value;
         const selectedCountry = document.getElementById('countrySelect').value;

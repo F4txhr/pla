@@ -79,10 +79,12 @@ async function loadTunnelsFromApi() {
     try {
         const response = await fetch('/api/tunnels');
         if (!response.ok) throw new Error('Failed to fetch tunnels from API');
-        tunnels = await response.json();
+        // Assign to both the local and global variable to ensure all scripts can access it.
+        window.tunnels = tunnels = await response.json();
     } catch (error) {
         console.error('Error loading tunnels:', error);
-        tunnels = [];
+        // Also clear the global variable on error.
+        window.tunnels = tunnels = [];
     }
 }
 
