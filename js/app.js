@@ -204,10 +204,11 @@ function confirmDeleteTunnel(tunnelId) {
 
 async function deleteTunnel(tunnelId) {
     try {
-        const response = await fetch('/api/tunnels', {
+        // The API expects the ID as a query parameter, not in the body.
+        const response = await fetch(`/api/tunnels?id=${tunnelId}`, {
             method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: tunnelId })
+            headers: { 'Content-Type': 'application/json' }
+            // No body is needed for this DELETE request.
         });
         if (!response.ok) {
             const errorData = await response.json();
