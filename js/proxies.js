@@ -59,7 +59,6 @@ function setupProxyEventListeners() {
     addListener('searchInput', 'input', applyFiltersAndRender);
 
     // Restore "Generate Config" functionality
-    addListener('generateConfigBtn', 'click', openGenerateConfigModal);
     addListener('cancelGenerateBtn', 'click', () => document.getElementById('generateConfigModal').classList.add('hidden'));
     addListener('confirmGenerateBtn', 'click', handleGenerateConfig);
     addListener('generateUuidBtn', 'click', () => {
@@ -147,9 +146,7 @@ function renderProxies() {
 }
 
 function createProxyCardHTML(proxy) {
-    // UI now DIRECTLY reflects the database status. No more client-side "stale" logic.
     const displayStatus = proxy.status || 'unknown';
-
     let latencyClass = 'text-gray-500';
     let latencyText = `${proxy.latency || 0}ms`;
 
@@ -170,18 +167,13 @@ function createProxyCardHTML(proxy) {
         latencyClass = 'latency-high';
     }
 
-    // Determine the color of the status indicator dot
-    let statusDotColor = 'bg-yellow-500'; // Default for unknown
-    if (displayStatus === 'online') {
-        statusDotColor = 'bg-green-500';
-    } else if (displayStatus === 'testing') {
-        statusDotColor = 'bg-blue-500';
-    } else if (displayStatus === 'offline') {
-        statusDotColor = 'bg-red-500';
-    }
+    let statusDotColor = 'bg-yellow-500';
+    if (displayStatus === 'online') statusDotColor = 'bg-green-500';
+    else if (displayStatus === 'testing') statusDotColor = 'bg-blue-500';
+    else if (displayStatus === 'offline') statusDotColor = 'bg-red-500';
 
     return `
-        <div id="proxy-card-${proxy.id}" class="proxy-card bg-white rounded-lg shadow-md overflow-hidden slide-in" onclick="selectProxy(${proxy.id})">
+        <div id="proxy-card-${proxy.id}" class="proxy-card bg-white rounded-lg shadow-md overflow-hidden slide-in flex flex-col justify-between" onclick="selectProxy(${proxy.id})">
             <div class="p-4">
                 <div class="flex justify-between items-start mb-3">
                     <div class="flex items-center min-w-0">
@@ -201,6 +193,11 @@ function createProxyCardHTML(proxy) {
                     <div class="text-sm text-gray-600"><i class="fas fa-network-wired mr-2"></i>Port: <span class="font-medium">${proxy.proxyPort}</span></div>
                     <div class="text-sm ${latencyClass}"><i class="fas fa-clock mr-2"></i>Latency: <span class="font-medium">${latencyText}</span></div>
                 </div>
+            </div>
+            <div class="p-2 bg-gray-50 border-t border-gray-200">
+                <button class="w-full text-center px-3 py-1.5 bg-blue-500 text-white rounded-md text-xs font-semibold hover:bg-blue-600 transition-colors config-btn" onclick="openGenerateConfigModalForProxy(event, ${proxy.id})">
+                    <i class="fas fa-file-export mr-1"></i> Generate
+                </button>
             </div>
         </div>
     `;
@@ -258,77 +255,83 @@ async function loadProxiesFromApi() {
     }
 }
 
-let pollingInterval = null;
-const POLLING_DURATION_MS = 5 * 60 * 1000; // Poll for 5 minutes
-const POLLING_FREQUENCY_MS = 5000; // Poll every 5 seconds
-
-// Stops any active polling and re-enables the refresh button.
-function stopPolling() {
-    const refreshBtn = document.getElementById('refreshBtn');
-    if (pollingInterval) {
-        clearInterval(pollingInterval);
-        pollingInterval = null;
-        console.log('Polling stopped.');
-    }
-    if (refreshBtn) {
-        refreshBtn.disabled = false;
-        refreshBtn.innerHTML = '<i class="fas fa-sync-alt mr-2"></i> Refresh';
-    }
-}
-
-// Triggers the full, asynchronous check on the backend and starts polling.
+// This function now performs health checks on the client-side and patches the results to the backend.
 async function checkProxies() {
     const refreshBtn = document.getElementById('refreshBtn');
-    if (refreshBtn && refreshBtn.disabled) return; // Prevent multiple clicks
+    if (refreshBtn && refreshBtn.disabled) return;
+
+    if (filteredProxies.length === 0) {
+        showToast('No proxies to test.', 'info');
+        return;
+    }
 
     refreshBtn.disabled = true;
     refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Testing...';
+    showToast(`Testing ${filteredProxies.length} proxies... This may take a moment.`, 'info');
+
+    // Set UI to 'testing' state for all visible (filtered) proxies
+    for (const proxy of filteredProxies) {
+        proxy.status = 'testing';
+    }
+    renderProxies(); // Re-render to show 'testing' status
+
+    // The external API for checking proxy health
+    const healthCheckUrl = 'https://cfanalistik.up.railway.app/health';
+
+    const checkPromises = filteredProxies.map(proxy => {
+        return fetch(healthCheckUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ proxy: proxy.proxy_data })
+        })
+        .then(response => response.json())
+        .then(result => ({
+            id: proxy.id,
+            status: result.status,
+            latency: result.latency,
+            last_checked: new Date().toISOString() // Add timestamp
+        }))
+        .catch(error => {
+            console.error(`Error checking proxy ${proxy.proxy_data}:`, error);
+            // If the check fails, mark the proxy as offline
+            return {
+                id: proxy.id,
+                status: 'offline',
+                latency: 0,
+                last_checked: new Date().toISOString()
+            };
+        });
+    });
+
+    // Wait for all checks to complete
+    const updatedProxies = await Promise.all(checkPromises);
 
     try {
-        const response = await fetch('/api/trigger-full-check', {
-            method: 'POST'
+        // Send all results back to the server in a single bulk update
+        const response = await fetch('/api/proxies', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updatedProxies)
         });
 
-        if (response.status !== 202) {
+        if (!response.ok) {
             const errorData = await response.json();
-            throw new Error(errorData.details || 'Failed to trigger the check.');
+            throw new Error(errorData.details || 'Failed to save proxy statuses.');
         }
 
-        showToast('Test triggered! Live updates will appear automatically.', 'info');
+        showToast('Proxy checks complete. Updating list.', 'success');
 
-        // Immediately load data to show the initial 'testing' state
+        // Reload all data from the source of truth to ensure consistency
         allProxies = await loadProxiesFromApi();
         applyFiltersAndRender();
 
-        // Start polling to show progress
-        stopPolling(); // Ensure no multiple polls are running
-        console.log('Polling started for live UI updates...');
-        const startTime = Date.now();
-
-        pollingInterval = setInterval(async () => {
-            if (Date.now() - startTime > POLLING_DURATION_MS) {
-                stopPolling();
-                showToast('Live update session finished.', 'info');
-                return;
-            }
-
-            console.log('Polling for updates...');
-            allProxies = await loadProxiesFromApi();
-            applyFiltersAndRender();
-
-            // Check if all proxies are done and stop polling early
-            const isDone = !allProxies.some(p => p.status === 'testing');
-            if (isDone) {
-                console.log('All proxies tested. Stopping polling.');
-                stopPolling();
-                showToast('All proxies have been tested.', 'success');
-            }
-        }, POLLING_FREQUENCY_MS);
-
     } catch (error) {
-        console.error('Error triggering full check:', error);
+        console.error('Error saving proxy statuses:', error);
         showToast(`Error: ${error.message}`, 'error');
-        stopPolling(); // Make sure button is re-enabled on error
+    } finally {
+        // Always re-enable the button
+        refreshBtn.disabled = false;
+        refreshBtn.innerHTML = '<i class="fas fa-sync-alt mr-2"></i> Refresh';
     }
 }
 
@@ -461,6 +464,13 @@ function selectProxy(proxyId) {
     }
 }
 window.selectProxy = selectProxy;
+
+function openGenerateConfigModalForProxy(event, proxyId) {
+    event.stopPropagation();
+    selectProxy(proxyId);
+    openGenerateConfigModal();
+}
+window.openGenerateConfigModalForProxy = openGenerateConfigModalForProxy;
 
 function openGenerateConfigModal() {
     if (!selectedProxy) {

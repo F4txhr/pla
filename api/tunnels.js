@@ -22,7 +22,8 @@ async function handleGet(request, response) {
     try {
         const { data, error } = await supabase
             .from('tunnels')
-            .select('id, name, domain, is_active, created_at')
+            // Select the new status column to send it to the frontend.
+            .select('id, name, domain, status, created_at')
             .order('created_at', { ascending: false });
 
         if (error) throw error;
@@ -38,6 +39,8 @@ async function handlePost(request, response) {
         if (!name || !domain) {
             return response.status(400).json({ error: 'Name and domain are required.' });
         }
+        // The 'status' column has a default value of 'unknown' in the DB,
+        // so we don't need to specify it on creation.
         const { data, error } = await supabase
             .from('tunnels')
             .insert([{ name, domain }])
@@ -52,16 +55,30 @@ async function handlePost(request, response) {
 
 async function handlePatch(request, response) {
     try {
-        const { id, name, domain } = request.body;
-        if (!id || !name || !domain) {
-            return response.status(400).json({ error: 'ID, name, and domain are required.' });
+        const { id, name, domain, status } = request.body;
+        if (!id) {
+            return response.status(400).json({ error: 'An ID is required to update a tunnel.' });
         }
+
+        // Build an object with only the provided fields to update.
+        // This allows updating just the status, or the name/domain, or all.
+        const updateData = {};
+        if (name) updateData.name = name;
+        if (domain) updateData.domain = domain;
+        if (status) updateData.status = status;
+
+        // Ensure there's actually something to update.
+        if (Object.keys(updateData).length === 0) {
+            return response.status(400).json({ error: 'Nothing to update. Provide name, domain, or status.' });
+        }
+
         const { data, error } = await supabase
             .from('tunnels')
-            .update({ name, domain })
+            .update(updateData)
             .eq('id', id)
             .select()
             .single();
+
         if (error) throw error;
         return response.status(200).json(data);
     } catch (error) {
