@@ -301,24 +301,32 @@ async function checkProxies() {
 
             return {
                 id: proxy.id,
+                proxy_data: proxy.proxy_data,
                 status: isUp ? 'online' : 'offline',
                 latency: typeof result.delay === 'number' ? result.delay : 0,
-                last_checked: new Date().toISOString()
+                last_checked: new Date().toISOString(),
+                country: proxy.country,
+                org: proxy.org
             };
         } catch (error) {
             console.error(`Error checking proxy ${proxy.proxy_data}:`, error);
             // If the check fails, mark the proxy as offline
             return {
                 id: proxy.id,
+                proxy_data: proxy.proxy_data,
                 status: 'offline',
                 latency: 0,
-                last_checked: new Date().toISOString()
+                last_checked: new Date().toISOString(),
+                country: proxy.country,
+                org: proxy.org
             };
         }
     });
 
     // Wait for all checks to complete
     const updatedProxies = await Promise.all(checkPromises);
+
+    console.log('[UI] checkProxies -> updates to send:', updatedProxies.length);
 
     try {
         // Send all results back to the server in a single bulk update
@@ -613,9 +621,12 @@ async function testProxyLatency(event, proxyId) {
 
         const update = {
             id: proxy.id,
+            proxy_data: proxy.proxy_data,
             status: isUp ? 'online' : 'offline',
             latency: typeof result.delay === 'number' ? result.delay : 0,
-            last_checked: new Date().toISOString()
+            last_checked: new Date().toISOString(),
+            country: proxy.country,
+            org: proxy.org
         };
 
         // Persist this single proxy update to the backend
