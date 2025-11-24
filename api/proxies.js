@@ -1,6 +1,8 @@
 import { supabase } from './_lib/supabaseClient.js';
 
 export default async function handler(request, response) {
+    console.log(`[API /proxies] Incoming request: ${request.method} ${request.url}`);
+
     if (request.method === 'GET') {
         return handleGet(request, response);
     } else if (request.method === 'POST') {
@@ -9,6 +11,7 @@ export default async function handler(request, response) {
         return handlePatch(request, response);
     } else {
         response.setHeader('Allow', ['GET', 'POST', 'PATCH']);
+        console.warn(`[API /proxies] Method not allowed: ${request.method}`);
         return response.status(405).json({ error: `Method ${request.method} Not Allowed` });
     }
 }

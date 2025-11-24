@@ -241,11 +241,22 @@ function renderPagination() {
 // --- API & Data Functions ---
 async function loadProxiesFromApi() {
     try {
+        console.log('[UI] Fetching proxies from /api/proxies ...');
         // Add { cache: 'no-cache' } to force the browser to always fetch fresh data.
         // This prevents the UI from getting stuck showing a 'testing' state from the cache.
         const response = await fetch('/api/proxies', { cache: 'no-cache' });
-        if (!response.ok) throw new Error(`Failed to fetch proxy data from API. Status: ${response.status}`);
+
+        console.log('[UI] /api/proxies response status:', response.status);
+
+        if (!response.ok) {
+            const text = await response.text().catch(() => '');
+            console.error('[UI] /api/proxies error body:', text);
+            throw new Error(`Failed to fetch proxy data from API. Status: ${response.status}`);
+        }
+
         const proxies = await response.json();
+        console.log('[UI] /api/proxies returned rows:', Array.isArray(proxies) ? proxies.length : 'invalid');
+
         return proxies.map(p => {
             const parts = p.proxy_data.split(':');
             p.proxyIP = parts[0];
@@ -253,7 +264,7 @@ async function loadProxiesFromApi() {
             return p;
         });
     } catch (error) {
-        console.error(error);
+        console.error('[UI] Error in loadProxiesFromApi:', error);
         showToast('Could not load proxy data.', 'error');
         return [];
     }

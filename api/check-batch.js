@@ -2,12 +2,16 @@ import { supabase } from './_lib/supabaseClient.js';
 
 // This endpoint is designed to be called by the frontend to check a specific batch of proxies.
 export default async function handler(request, response) {
+    console.log(`[API /check-batch] Incoming request: ${request.method} ${request.url}`);
+
     if (request.method !== 'POST') {
         response.setHeader('Allow', ['POST']);
+        console.warn(`[API /check-batch] Method not allowed: ${request.method}`);
         return response.status(405).json({ error: `Method ${request.method} Not Allowed` });
     }
 
     const proxiesToCheck = request.body;
+    console.log(`[API /check-batch] Proxies to check: ${Array.isArray(proxiesToCheck) ? proxiesToCheck.length : 'invalid body'}`);
 
     if (!Array.isArray(proxiesToCheck) || proxiesToCheck.length === 0) {
         return response.status(400).json({ error: 'Request body must be a non-empty array of proxy objects.' });

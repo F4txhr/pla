@@ -63,10 +63,15 @@ const server = http.createServer((req, res) => {
 
         const urlPath = req.url.split('?')[0];
 
+        // Basic request logging for debugging
+        console.log(`[DEV SERVER] ${req.method} ${req.url}`);
+
         // Route API requests to the corresponding serverless function
         if (urlPath.startsWith('/api/')) {
             const functionName = urlPath.split('/')[2];
             const functionPath = path.join(__dirname, 'api', `${functionName}.js`);
+
+            console.log(`[DEV SERVER] -> Routing to function: ${functionName} (${functionPath})`);
 
             try {
                 if (fs.existsSync(functionPath)) {
@@ -74,6 +79,7 @@ const server = http.createServer((req, res) => {
                     const resMock = createResMock(res);
                     await handler(req, resMock);
                 } else {
+                    console.warn(`[DEV SERVER] Function not found for path: ${functionPath}`);
                     res.writeHead(404, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ error: 'Function not found' }));
                 }
@@ -98,12 +104,16 @@ const server = http.createServer((req, res) => {
             };
             const contentType = mimeTypes[extname] || 'application/octet-stream';
 
+            console.log(`[DEV SERVER] -> Serving static file: ${filePath}`);
+
             fs.readFile(filePath, (error, content) => {
                 if (error) {
                     if (error.code === 'ENOENT') {
+                        console.warn(`[DEV SERVER] 404 Not Found: ${filePath}`);
                         res.writeHead(404, { 'Content-Type': 'text/html' });
                         res.end('<h1>404 Not Found</h1>', 'utf-8');
                     } else {
+                        console.error('[DEV SERVER] File read error:', error);
                         res.writeHead(500);
                         res.end('Sorry, an error occurred: ' + error.code);
                     }
