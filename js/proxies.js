@@ -275,6 +275,8 @@ async function checkProxies() {
     const refreshBtn = document.getElementById('refreshBtn');
     if (refreshBtn && refreshBtn.disabled) return;
 
+    console.log('[UI] checkProxies -> start, filteredProxies:', filteredProxies.length);
+
     if (filteredProxies.length === 0) {
         showToast('No proxies to test.', 'info');
         return;
@@ -294,6 +296,7 @@ async function checkProxies() {
         try {
             // Use the external FoolVPN health check API (GET with query parameter)
             const healthUrl = `${PROXY_HEALTH_API_BASE}/check?ip=${encodeURIComponent(proxy.proxy_data)}`;
+            console.log('[UI] checkProxies -> calling health API:', healthUrl);
             const response = await fetch(healthUrl);
             const result = await response.json();
 
@@ -336,8 +339,11 @@ async function checkProxies() {
             body: JSON.stringify(updatedProxies)
         });
 
+        console.log('[UI] checkProxies -> PATCH /api/proxies status:', response.status);
+
         if (!response.ok) {
             const errorData = await response.json();
+            console.error('[UI] checkProxies -> PATCH error body:', errorData);
             throw new Error(errorData.details || 'Failed to save proxy statuses.');
         }
 

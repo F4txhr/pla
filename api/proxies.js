@@ -119,6 +119,15 @@ async function handlePatch(request, response) {
                 console.error('[API /proxies] Supabase error in handlePatch (upsert):', error);
                 throw error;
             }
+
+            // Log a small sample for easier debugging
+            const sample = updates.slice(0, 3).map(u => ({
+                id: u.id,
+                proxy_data: u.proxy_data,
+                status: u.status,
+                latency: u.latency
+            }));
+            console.log('[API /proxies] handlePatch -> upsert success. Sample:', sample);
         } else {
             // Jika ada objek yang tidak punya proxy_data, berarti kita hanya ingin
             // memperbarui status/latency/last_checked untuk baris yang sudah ada.
@@ -146,10 +155,13 @@ async function handlePatch(request, response) {
                 if (error) {
                     console.error('[API /proxies] Supabase error in handlePatch (update per-row):', error, 'for id:', u.id);
                     // Lanjut ke row berikutnya, tapi tetap log error.
+                } else {
+                    console.log('[API /proxies] handlePatch -> updated proxy id:', u.id, 'status:', u.status, 'latency:', u.latency);
                 }
             }
         }
 
+        console.log('[API /proxies] handlePatch -> finished updating proxies:', updates.length);
         return response.status(200).json({ success: true, message: `${updates.length} proxies updated successfully.` });
     } catch (error) {
         console.error('Error batch updating proxies:', error);
