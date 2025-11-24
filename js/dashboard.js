@@ -261,19 +261,94 @@ async function fetchCfUsage() {
             return;
         }
 
-        listEl.innerHTML = data.tunnels.map((tunnel) => {
-            let statusColor = 'text-yellow-600 bg-yellow-50';
-            if (tunnel.status === 'online') statusColor = 'text-green-600 bg-green-50';
-            if (tunnel.status === 'offline') statusColor = 'text-red-600 bg-red-50';
+        const zones = data.tunnels.filter(t => t.usage && t.usage.type === 'zone');
+        const workers = data.tunnels.filter(t => t.usage && t.usage.type === 'worker');
+        const others = data.tunnels.filter(t => !t.usage);
 
-            let usageLine = '';
-            if (tunnel.usage) {
-                if (tunnel.usage.type === 'zone') {
-                    const req = tunnel.usage.total_requests_today ?? 0;
-                    const bytes = tunnel.usage.total_bandwidth_today_bytes ?? 0;
-                    const mb = (bytes / (1024 * 1024)).toFixed(2);
-                    usageLine = `<p class="text-xs text-gray-500">Today: ${req} req, ${mb} MB</p>`;
-                } else if (tunnel.usage.type === 'worker') {
+        // If we have at least one zone tunnel, build a grouped \"card\" view:
+        if (zones.length > 0) {
+            const zoneTunnel = zones[0];
+            const zoneUsage = zoneTunnel.usage;
+            const zoneReq = zoneUsage.total_requests_today ?? 0;
+            const zoneBytes = zoneUsage.total_bandwidth_today_bytes ?? 0;
+            const zoneMb = (zoneBytes / (1024 * 1024)).toFixed(2);
+            const zoneTitle = zoneTunnel.name || `Zone ${zoneUsage.zone_id || ''}`;
+
+            const workerLines = workers.map((tunnel) => {
+                let statusColor = 'text-yellow-600 bg-yellow-50';
+                if (tunnel.status === 'online') statusColor = 'text-green-600 bg-green-50';
+                if (tunnel.status === 'offline') statusColor = 'text-red-600 bg-red-50';
+
+                const req = tunnel.usage.total_requests_today ?? 0;
+                const errCount = tunnel.usage.total_errors_today ?? 0;
+                const cpuP90us = tunnel.usage.cpu_time_p90;
+                const cpuP90ms = cpuP90us != null ? (cpuP90us / 1000).toFixed(2) : null;
+                const cpuPart = cpuP90ms != null ? `, CPU p90: ${cpuP90ms} ms` : '';
+
+                return `
+                    <div class="py-1 flex items-center justify-between">
+                        <div>
+                            <p class="text-sm font-medium text-gray-800">${tunnel.name}</p>
+                            <p class="text-xs text-gray-500">${tunnel.domain}</p>
+                            <p class="text-xs text-gray-500">Today: ${req} req, ${errCount} errors${cpuPart}</p>
+                        </div>
+                        <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusColor}">
+                            ${tunnel.status || 'unknown'}
+                        </span>
+                    </div>
+                `;
+            }).join('') || '<p class="text-xs text-gray-500">No worker metrics yet.</p>';
+
+            const otherLines = others.map((tunnel) => {
+                let statusColor = 'text-yellow-600 bg-yellow-50';
+                if (tunnel.status === 'online') statusColor = 'text-green-600 bg-green-50';
+                if (tunnel.status === 'offline') statusColor = 'text-red-600 bg-red-50';
+
+                return `
+                    <div class="py-1 flex items-center justify-between">
+                        <div>
+                            <p class="text-sm font-medium text-gray-800">${tunnel.name}</p>
+                            <p class="text-xs text-gray-500">${tunnel.domain}</p>
+                        </div>
+                        <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusColor}">
+                            ${tunnel.status || 'unknown'}
+                        </span>
+                    </div>
+                `;
+            }).join('');
+
+            listEl.innerHTML = `
+                <div class="rounded-lg border border-gray-200 p-3 mb-2">
+                    <div class="flex items-center justify-between mb-2">
+                        <div>
+                            <p class="text-sm font-semibold text-gray-900">${zoneTitle}</p>
+                            <p class="text-xs text-gray-500">Zone ID: ${zoneUsage.zone_id || 'N/A'}</p>
+                        </div>
+                        <div class="text-right text-xs text-gray-700">
+                            <p>Today: ${zoneReq} req</p>
+                            <p>${zoneMb} MB</p>
+                        </div>
+                    </div>
+                    <div class="mt-2 pt-2 border-t border-gray-200">
+                        <p class="text-xs font-semibold text-gray-700 mb-1">Workers in this account</p>
+                        ${workerLines}
+                    </div>
+                    ${otherLines ? `
+                    <div class="mt-2 pt-2 border-t border-dashed border-gray-200">
+                        <p class="text-xs font-semibold text-gray-700 mb-1">Other tunnels</p>
+                        ${otherLines}
+                    </div>` : ''}
+                </div>
+            `;
+        } else {
+            // Fallback: no zone usage, show flat list
+            listEl.innerHTML = data.tunnels.map((tunnel) => {
+                let statusColor = 'text-yellow-600 bg-yellow-50';
+                if (tunnel.status === 'online') statusColor = 'text-green-600 bg-green-50';
+                if (tunnel.status === 'offline') statusColor = 'text-red-600 bg-red-50';
+
+                let usageLine = '';
+                if (tunnel.usage && tunnel.usage.type === 'worker') {
                     const req = tunnel.usage.total_requests_today ?? 0;
                     const errCount = tunnel.usage.total_errors_today ?? 0;
                     const cpuP90us = tunnel.usage.cpu_time_p90;
@@ -281,21 +356,21 @@ async function fetchCfUsage() {
                     const cpuPart = cpuP90ms != null ? `, CPU p90: ${cpuP90ms} ms` : '';
                     usageLine = `<p class="text-xs text-gray-500">Today: ${req} req, ${errCount} errors${cpuPart}</p>`;
                 }
-            }
 
-            return `
-                <div class="py-2 flex items-center justify-between">
-                    <div>
-                        <p class="text-sm font-medium text-gray-800">${tunnel.name}</p>
-                        <p class="text-xs text-gray-500">${tunnel.domain}</p>
-                        ${usageLine}
+                return `
+                    <div class="py-2 flex items-center justify-between">
+                        <div>
+                            <p class="text-sm font-medium text-gray-800">${tunnel.name}</p>
+                            <p class="text-xs text-gray-500">${tunnel.domain}</p>
+                            ${usageLine}
+                        </div>
+                        <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusColor}">
+                            ${tunnel.status || 'unknown'}
+                        </span>
                     </div>
-                    <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusColor}">
-                        ${tunnel.status || 'unknown'}
-                    </span>
-                </div>
-            `;
-        }).join('');
+                `;
+            }).join('');
+        }
     } catch (err) {
         console.error('[Dashboard] Failed to fetch CF usage:', err);
     }
