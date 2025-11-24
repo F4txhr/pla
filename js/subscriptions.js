@@ -130,7 +130,11 @@ async function generateConfiguration() {
                 ? bugList[Math.floor(Math.random() * bugList.length)]
                 : workerHost;
 
-            const remark = encodeURIComponent(`${protocol.toUpperCase()}-${proxy.country}-${i + 1}`);
+            // Tag: PROTOCOL + FLAG + ISP + GLOBAL_INDEX
+            const flag = getFlagEmoji(proxy.country || 'XX');
+            const isp = proxy.org || 'Unknown ISP';
+            const tagBase = `${protocol.toUpperCase()} ${flag} ${isp} ${i + 1}`;
+            const remark = encodeURIComponent(tagBase);
 
             let config = '';
             if (protocol === 'trojan') {

@@ -568,13 +568,17 @@ function toSingBox(config) {
 async function processLinks(links) {
     const results = [];
 
-    for (let i = 0; i < links.length; i++) {
+    for (let i = 0; i &lt; links.length; i++) {
         const singleLink = links[i];
 
         try {
             const parsed = parseAnyLink(singleLink);
-            const originalName = parsed.name || 'Proxy Server';
-            const configName = `${originalName}-${i + 1} [vortexVpn]`;
+            // Gunakan nama yang sudah dikirim dari link (fragment) jika ada.
+            // Tambahkan brand suffix [Vortex-x] dan biarkan nomor urut global datang dari generator.
+            const baseName = (parsed.name && parsed.name.trim().length)
+                ? parsed.name.trim()
+                : `Proxy Server ${i + 1}`;
+            const configName = `${baseName} [Vortex-x]`;
 
             const config = {
                 ...parsed,

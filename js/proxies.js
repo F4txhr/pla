@@ -725,7 +725,13 @@ async function handleGenerateConfig() {
                 const workerHost = pickWorkerHost();
                 const bugHost = bugList.length ? bugList[Math.floor(Math.random() * bugList.length)] : workerHost;
                 const uuid = crypto.randomUUID();
-                const remark = encodeURIComponent(`${protocol.toUpperCase()}-${proxy.country || 'XX'}-${index + 1}`);
+
+                // Tag: PROTOCOL + FLAG + ISP + GLOBAL_INDEX
+                const flag = getFlagEmoji(proxy.country || 'XX');
+                const isp = proxy.org || 'Unknown ISP';
+                const tagBase = `${protocol.toUpperCase()} ${flag} ${isp} ${index + 1}`;
+                const remark = encodeURIComponent(tagBase);
+
                 return buildUriForProxy(proxy, protocol, uuid, workerHost, bugHost, remark);
             });
 
@@ -765,7 +771,12 @@ async function handleGenerateConfig() {
                 ? pickWorkerHost()
                 : (workerSelection || pickWorkerHost());
             const bugHost = bugList.length ? bugList[Math.floor(Math.random() * bugList.length)] : workerHost;
-            const remark = encodeURIComponent(`${protocol.toUpperCase()}-${selectedProxy.country || 'XX'}-1`);
+
+            const flag = getFlagEmoji(selectedProxy.country || 'XX');
+            const isp = selectedProxy.org || 'Unknown ISP';
+            const tagBase = `${protocol.toUpperCase()} ${flag} ${isp} 1`;
+            const remark = encodeURIComponent(tagBase);
+
             const uri = buildUriForProxy(selectedProxy, protocol, uuidField, workerHost, bugHost, remark);
             uris = [uri];
             firstUri = uri;
