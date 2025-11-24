@@ -124,14 +124,27 @@ async function generateConfiguration() {
         let result = configurations.join('\n');
 
         if (outputFormat === 'clash' || outputFormat === 'singbox') {
-            const selectedTemplateLevel = document.getElementById('templateLevelSelect').value;
-            const response = await fetch(`${API_BASE_URL}/convert/${outputFormat}`, {
+            // Use the FoolVPN converter API
+            const formatForApi = outputFormat === 'clash' ? 'clash' : 'sfa';
+            const response = await fetch(`${API_BASE_URL}/convert`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ links: configurations, level: selectedTemplateLevel }),
+                body: JSON.stringify({
+                    url: configurations.join(','),
+                    format: formatForApi,
+                    template: 'cf',
+                }),
             });
             if (!response.ok) throw new Error(`API conversion failed: ${response.statusText}`);
-            result = await response.text();
+
+            if (outputFormat === 'clash') {
+                // Clash config is returned as plain text (YAML)
+                result = await response.text();
+            } else {
+                // Singbox (mapped to SFA) returns JSON
+                const json = await response.json();
+                result = JSON.stringify(json, null, 2);
+            }
         } else if (outputFormat === 'qrcode') {
             result = configurations[0];
         }

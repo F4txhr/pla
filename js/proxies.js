@@ -191,7 +191,11 @@ function createProxyCardHTML(proxy) {
                 <div class="mb-4 space-y-2">
                     <div class="text-sm text-gray-600"><i class="fas fa-server mr-2"></i><span class="font-medium">${proxy.proxyIP}</span></div>
                     <div class="text-sm text-gray-600"><i class="fas fa-network-wired mr-2"></i>Port: <span class="font-medium">${proxy.proxyPort}</span></div>
-                    <div class="text-sm ${latencyClass}"><i class="fas fa-clock mr-2"></i>Latency: <span class="font-medium">${latencyText}</span></div>
+                    <div class="text-sm ${latencyClass} cursor-pointer" onclick="testProxyLatency(event, ${proxy.id})">
+                        <i class="fas fa-clock mr-2"></i>
+                        Latency:
+                        <span class="font-medium">${latencyText}</span>
+                    </div>
                 </div>
             </div>
             <div class="p-2 bg-gray-50 border-t border-gray-200">
@@ -277,17 +281,17 @@ async function checkProxies() {
 
     const checkPromises = filteredProxies.map(async (proxy) => {
         try {
-            // Use the external health check API (GET with query parameter)
-            const healthUrl = `${API_BASE_URL}/health?proxy=${encodeURIComponent(proxy.proxy_data)}`;
+            // Use the external FoolVPN health check API (GET with query parameter)
+            const healthUrl = `${PROXY_HEALTH_API_BASE}/check?ip=${encodeURIComponent(proxy.proxy_data)}`;
             const response = await fetch(healthUrl);
             const result = await response.json();
 
-            const isUp = response.ok && (result.success === true || result.status === 'UP');
+            const isUp = response.ok && result.proxyip === true;
 
             return {
                 id: proxy.id,
                 status: isUp ? 'online' : 'offline',
-                latency: typeof result.latency_ms === 'number' ? result.latency_ms : 0,
+                latency: typeof result.delay === 'number' ? result.delay : 0,
                 last_checked: new Date().toISOString()
             };
         } catch (error) {
@@ -570,3 +574,74 @@ async function copyResultToClipboard() {
 function generateUUID() {
     return crypto.randomUUID();
 }
+
+// Test a single proxy from its card (latency row click)
+async function testProxyLatency(event, proxyId) {
+    if (event) {
+        event.stopPropagation();
+    }
+
+    const proxy = allProxies.find(p => p.id === proxyId);
+    if (!proxy) return;
+
+    // Avoid double-testing the same proxy at the same time
+    if (proxy.status === 'testing') {
+        return;
+    }
+
+    // Set this proxy to testing state and re-render
+    proxy.status = 'testing';
+    renderProxies();
+
+    try {
+        const healthUrl = `${PROXY_HEALTH_API_BASE}/check?ip=${encodeURIComponent(proxy.proxy_data)}`;
+        const response = await fetch(healthUrl);
+        const result = await response.json();
+
+        const isUp = response.ok && result.proxyip === true;
+
+        const update = {
+            id: proxy.id,
+            status: isUp ? 'online' : 'offline',
+            latency: typeof result.delay === 'number' ? result.delay : 0,
+            last_checked: new Date().toISOString()
+        };
+
+        // Persist this single proxy update to the backend
+        const saveResponse = await fetch('/api/proxies', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify([update])
+        });
+
+        if (!saveResponse.ok) {
+            const errorData = await saveResponse.json().catch(() => ({}));
+            throw new Error(errorData.details || 'Failed to save proxy status.');
+        }
+
+        // Update local state
+        const idx = allProxies.findIndex(p => p.id === proxyId);
+        if (idx !== -1) {
+            allProxies[idx] = { ...allProxies[idx], ...update };
+        }
+
+        applyFiltersAndRender();
+        showToast(`Proxy ${proxy.proxy_data} is ${update.status}.`, 'success');
+    } catch (error) {
+        console.error(`Error testing proxy ${proxy.proxy_data}:`, error);
+        showToast(`Error checking proxy: ${error.message}`, 'error');
+
+        // Fallback: mark as offline in local state if something went wrong
+        const idx = allProxies.findIndex(p => p.id === proxyId);
+        if (idx !== -1) {
+            allProxies[idx] = {
+                ...allProxies[idx],
+                status: 'offline',
+                latency: 0,
+                last_checked: new Date().toISOString()
+            };
+        }
+        applyFiltersAndRender();
+    }
+}
+window.testProxyLatency = testProxyLatency;

@@ -14,7 +14,8 @@ export default async function handler(request, response) {
     }
 
     try {
-        const API_BASE_URL = 'https://cfanalistik.up.railway.app';
+        // Use the FoolVPN health check API for server-side batch checks
+        const API_BASE_URL = 'https://id1.foolvpn.me/api/v1';
         const subBatchSize = 10; // Process in smaller sub-batches to avoid overwhelming APIs
 
         for (let i = 0; i < proxiesToCheck.length; i += subBatchSize) {
@@ -22,10 +23,13 @@ export default async function handler(request, response) {
             const updates = [];
 
             const healthChecks = subBatch.map(proxy => {
-                const url = `${API_BASE_URL}/health?proxy=${proxy.proxy_data}`;
+                const url = `${API_BASE_URL}/check?ip=${encodeURIComponent(proxy.proxy_data)}`;
                 return fetch(url)
-                    .then(res => res.ok ? res.json() : Promise.reject('Fetch failed'))
-                    .then(data => ({ success: true, latency_ms: data.latency_ms || 0 }))
+                    .then(res => (res.ok ? res.json() : Promise.reject('Fetch failed')))
+                    .then(data => ({
+                        success: data.proxyip === true,
+                        latency_ms: typeof data.delay === 'number' ? data.delay : 0
+                    }))
                     .catch(() => ({ success: false, latency_ms: 0 }));
             });
 
