@@ -16,7 +16,15 @@ async function loadAccountsFromApi() {
     try {
         const response = await fetch('/api/accounts');
         if (!response.ok) throw new Error('Failed to fetch accounts');
-        accounts = await response.json();
+        const data = await response.json();
+
+        // Map backend fields to the frontend shape used by the UI
+        accounts = data.map(row => ({
+            id: String(row.id),
+            username: row.username,
+            uuid: row.secret_key || '',
+            createdAt: row.created_at || new Date().toISOString()
+        }));
     } catch (error) {
         console.error('Error loading accounts:', error);
         accounts = [];
@@ -25,11 +33,23 @@ async function loadAccountsFromApi() {
 
 async function saveAccountsToApi() {
     try {
-        await fetch('/api/accounts', {
+        // Only send the fields expected by the backend / database.
+        const payload = accounts.map(acc => ({
+            username: acc.username,
+            secret_key: acc.uuid,
+            is_active: true
+        }));
+
+        const response = await fetch('/api/accounts', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(accounts)
+            body: JSON.stringify(payload)
         });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.details || 'Failed to save accounts');
+        }
     } catch (error) {
         console.error('Error saving accounts:', error);
     }

@@ -275,23 +275,22 @@ async function checkProxies() {
     }
     renderProxies(); // Re-render to show 'testing' status
 
-    // The external API for checking proxy health
-    const healthCheckUrl = 'https://cfanalistik.up.railway.app/health';
+    const checkPromises = filteredProxies.map(async (proxy) => {
+        try {
+            // Use the external health check API (GET with query parameter)
+            const healthUrl = `${API_BASE_URL}/health?proxy=${encodeURIComponent(proxy.proxy_data)}`;
+            const response = await fetch(healthUrl);
+            const result = await response.json();
 
-    const checkPromises = filteredProxies.map(proxy => {
-        return fetch(healthCheckUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ proxy: proxy.proxy_data })
-        })
-        .then(response => response.json())
-        .then(result => ({
-            id: proxy.id,
-            status: result.status,
-            latency: result.latency,
-            last_checked: new Date().toISOString() // Add timestamp
-        }))
-        .catch(error => {
+            const isUp = response.ok && (result.success === true || result.status === 'UP');
+
+            return {
+                id: proxy.id,
+                status: isUp ? 'online' : 'offline',
+                latency: typeof result.latency_ms === 'number' ? result.latency_ms : 0,
+                last_checked: new Date().toISOString()
+            };
+        } catch (error) {
             console.error(`Error checking proxy ${proxy.proxy_data}:`, error);
             // If the check fails, mark the proxy as offline
             return {
@@ -300,7 +299,7 @@ async function checkProxies() {
                 latency: 0,
                 last_checked: new Date().toISOString()
             };
-        });
+        }
     });
 
     // Wait for all checks to complete
@@ -330,8 +329,10 @@ async function checkProxies() {
         showToast(`Error: ${error.message}`, 'error');
     } finally {
         // Always re-enable the button
-        refreshBtn.disabled = false;
-        refreshBtn.innerHTML = '<i class="fas fa-sync-alt mr-2"></i> Refresh';
+        if (refreshBtn) {
+            refreshBtn.disabled = false;
+            refreshBtn.innerHTML = '<i class="fas fa-sync-alt mr-2"></i> Refresh';
+        }
     }
 }
 
