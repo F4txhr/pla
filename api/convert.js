@@ -568,7 +568,7 @@ function toSingBox(config) {
 async function processLinks(links) {
     const results = [];
 
-    for (let i = 0; i &lt; links.length; i++) {
+    for (let i = 0; i < links.length; i++) {
         const singleLink = links[i];
 
         try {
