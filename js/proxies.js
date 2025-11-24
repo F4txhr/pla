@@ -1,5 +1,5 @@
 // =================================================================================
-// Proxies Page Logic (Final Corrected Version)
+// Proxies Page Logic
 // =================================================================================
 
 // --- Page State ---
@@ -45,7 +45,6 @@ async function initializeProxyPage() {
     if (allProxies.length > 0) {
         proxyContainer.classList.remove('hidden');
     }
-
 }
 
 function setupProxyEventListeners() {
@@ -70,10 +69,10 @@ function setupProxyEventListeners() {
     addListener('bulkGenerateBtn', 'click', openBulkGenerateModal);
     addListener('bulkResetBtn', 'click', resetSelection);
 
-    // Restore search functionality
+    // Search
     addListener('searchInput', 'input', applyFiltersAndRender);
 
-    // Restore "Generate Config" functionality
+    // Generate Config modal
     addListener('cancelGenerateBtn', 'click', () => document.getElementById('generateConfigModal').classList.add('hidden'));
     addListener('confirmGenerateBtn', 'click', handleGenerateConfig);
     addListener('generateUuidBtn', 'click', () => {
@@ -82,9 +81,15 @@ function setupProxyEventListeners() {
     addListener('closeResultBtn', 'click', () => document.getElementById('resultModal').classList.add('hidden'));
     addListener('copyResultBtn', 'click', copyResultToClipboard);
 
-    document.querySelectorAll('.vpn-type-btn').forEach(btn => btn.addEventListener('click', () => handleButtonGroup(btn, 'vpn-type-btn')));
-    document.querySelectorAll('.port-btn').forEach(btn => btn.addEventListener('click', () => handleButtonGroup(btn, 'port-btn')));
-    document.querySelectorAll('.format-btn').forEach(btn => btn.addEventListener('click', () => handleButtonGroup(btn, 'format-btn')));
+    document.querySelectorAll('.vpn-type-btn').forEach(btn =>
+        btn.addEventListener('click', () => handleButtonGroup(btn, 'vpn-type-btn'))
+    );
+    document.querySelectorAll('.port-btn').forEach(btn =>
+        btn.addEventListener('click', () => handleButtonGroup(btn, 'port-btn'))
+    );
+    document.querySelectorAll('.format-btn').forEach(btn =>
+        btn.addEventListener('click', () => handleButtonGroup(btn, 'format-btn'))
+    );
 }
 
 // --- Filtering & Rendering ---
@@ -117,7 +122,8 @@ function applyFilters() {
     }
 
     filteredProxies = tempProxies;
-    document.getElementById('totalProxies').textContent = filteredProxies.length;
+    const totalEl = document.getElementById('totalProxies');
+    if (totalEl) totalEl.textContent = filteredProxies.length;
 }
 
 function changePage(page) {
@@ -154,12 +160,13 @@ function renderProxies() {
     const startIndex = (currentPage - 1) * pageSize;
     const paginatedProxies = filteredProxies.slice(startIndex, startIndex + pageSize);
 
-    document.getElementById('showingFrom').textContent = hasProxies ? startIndex + 1 : 0;
-    document.getElementById('showingTo').textContent = startIndex + paginatedProxies.length;
+    const fromEl = document.getElementById('showingFrom');
+    const toEl = document.getElementById('showingTo');
+    if (fromEl) fromEl.textContent = hasProxies ? startIndex + 1 : 0;
+    if (toEl) toEl.textContent = startIndex + paginatedProxies.length;
 
     proxyContainer.innerHTML = paginatedProxies.map(createProxyCardHTML).join('');
 
-    // Pastikan tombol bulk actions mengikuti state seleksi
     updateBulkActionsVisibility();
 }
 
@@ -176,16 +183,16 @@ function createProxyCardHTML(proxy) {
 
     if (displayStatus === 'testing') {
         latencyClass = 'text-blue-500';
-        latencyText = '&lt;i class="fas fa-spinner fa-spin mr-1"&gt;&lt;/i&gt; Testing...';
+        latencyText = '<i class="fas fa-spinner fa-spin mr-1"></i> Testing...';
     } else if (displayStatus === 'offline') {
         latencyClass = 'text-red-500';
         latencyText = 'Offline';
     } else if (displayStatus === 'unknown') {
         latencyClass = 'text-yellow-500';
         latencyText = 'Unknown';
-    } else if (proxy.latency &lt; 150) {
+    } else if (proxy.latency < 150) {
         latencyClass = 'latency-low';
-    } else if (proxy.latency &lt; 500) {
+    } else if (proxy.latency < 500) {
         latencyClass = 'latency-medium';
     } else {
         latencyClass = 'latency-high';
@@ -200,40 +207,51 @@ function createProxyCardHTML(proxy) {
     const selectedClass = isChecked ? ' ring-2 ring-purple-400' : '';
 
     return `
-        &lt;div id="proxy-card-${proxy.id}" class="proxy-card bg-white rounded-lg shadow-md overflow-hidden slide-in flex flex-col justify-between${selectedClass}" onclick="selectProxy(${proxy.id})"&gt;
-            &lt;div class="p-4"&gt;
-                &lt;div class="flex justify-between items-start mb-3"&gt;
-                    &lt;div class="flex items-center min-w-0"&gt;
-                        &lt;input type="checkbox" class="mr-2 proxy-select-checkbox" onclick="toggleProxySelection(event, ${proxy.id})" ${isChecked ? 'checked' : ''}&gt;
-                        &lt;img src="https://hatscripts.github.io/circle-flags/flags/${(proxy.country || 'xx').toLowerCase()}.svg" alt="${proxy.country}" class="flag-icon mr-2 flex-shrink-0"&gt;
-                        &lt;div class="min-w-0"&gt;
-                            &lt;h3 class="font-semibold text-gray-900 truncate"&gt;${getCountryName(proxy.country)}&lt;/h3&gt;
-                            &lt;p class="text-xs text-gray-500 truncate"&gt;${proxy.org || 'Unknown Org'}&lt;/p&gt;
-                        &lt;/div&gt;
-                    &lt;/div&gt;
-                    &lt;span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${displayStatus === 'online' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}"&gt;
-                        &lt;span class="w-2 h-2 rounded-full mr-1 ${statusDotColor}"&gt;&lt;/span&gt;
+        <div id="proxy-card-${proxy.id}" class="proxy-card bg-white rounded-lg shadow-md overflow-hidden slide-in flex flex-col justify-between${selectedClass}" onclick="selectProxy(${proxy.id})">
+            <div class="p-4">
+                <div class="flex justify-between items-start mb-3">
+                    <div class="flex items-center min-w-0">
+                        <input type="checkbox" class="mr-2 proxy-select-checkbox" onclick="toggleProxySelection(event, ${proxy.id})" ${isChecked ? 'checked' : ''}>
+                        <img src="https://hatscripts.github.io/circle-flags/flags/${(proxy.country || 'xx').toLowerCase()}.svg" alt="${proxy.country}" class="flag-icon mr-2 flex-shrink-0">
+                        <div class="min-w-0">
+                            <h3 class="font-semibold text-gray-900 truncate">${getCountryName(proxy.country)}</h3>
+                            <p class="text-xs text-gray-500 truncate">${proxy.org || 'Unknown Org'}</p>
+                        </div>
+                    </div>
+                    <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${displayStatus === 'online' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">
+                        <span class="w-2 h-2 rounded-full mr-1 ${statusDotColor}"></span>
                         ${displayStatus}
-                    &lt;/span&gt;
-                &lt;/div&gt;
-                &lt;div class="mb-4 space-y-2"&gt;
-                    &lt;div class="text-sm text-gray-600"&gt;&lt;i class="fas fa-server mr-2"&gt;&lt;/i&gt;&lt;span class="font-medium"&gt;${proxy.proxyIP}&lt;/span&gt;&lt;/div&gt;
-                    &lt;div class="text-sm text-gray-600"&gt;&lt;i class="fas fa-network-wired mr-2"&gt;&lt;/i&gt;Port: &lt;span class="font-medium"&gt;${proxy.proxyPort}&lt;/span&gt;&lt;/div&gt;
-                    &lt;div class="text-sm ${latencyClass} cursor-pointer" onclick="testProxyLatency(event, ${proxy.id})"&gt;
-                        &lt;i class="fas fa-clock mr-2"&gt;&lt;/i&gt;
+                    </span>
+                </div>
+                <div class="mb-4 space-y-2">
+                    <div class="text-sm text-gray-600"><i class="fas fa-server mr-2"></i><span class="font-medium">${proxy.proxyIP}</span></div>
+                    <div class="text-sm text-gray-600"><i class="fas fa-network-wired mr-2"></i>Port: <span class="font-medium">${proxy.proxyPort}</span></div>
+                    <div class="text-sm ${latencyClass} cursor-pointer" onclick="testProxyLatency(event, ${proxy.id})">
+                        <i class="fas fa-clock mr-2"></i>
                         Latency:
-                        &lt;span class="font-medium"&gt;${latencyText}&lt;/span&gt;
-                    &lt;/div&gt;
-                &lt;/div&gt;
-            &lt;/div&gt;
-            &lt;div class="p-2 bg-gray-50 border-t border-gray-200"&gt;
-                &lt;button class="w-full text-center px-3 py-1.5 bg-blue-500 text-white rounded-md text-xs font-semibold hover:bg-blue-600 transition-colors config-btn" onclick="openGenerateConfigModalForProxy(event, ${proxy.id})"&gt;
-                    &lt;i class="fas fa-file-export mr-1"&gt;&lt;/i&gt; Generate
-                &lt;/button&gt;
-            &lt;/div&gt;
-        &lt;/div&gt;
+                        <span class="font-medium">${latencyText}</span>
+                    </div>
+                </div>
+            </div>
+            <div class="p-2 bg-gray-50 border-t border-gray-200">
+                <button class="w-full text-center px-3 py-1.5 bg-blue-500 text-white rounded-md text-xs font-semibold hover:bg-blue-600 transition-colors config-btn" onclick="openGenerateConfigModalForProxy(event, ${proxy.id})">
+                    <i class="fas fa-file-export mr-1"></i> Generate
+                </button>
+            </div>
+        </div>
     `;
-}" ${currentPage === 1 ? 'disabled' : ''} onclick="changePage(${currentPage - 1})"><i class="fas fa-chevron-left"></i></button>`;
+}
+
+function renderPagination() {
+    const pagination = document.getElementById('pagination');
+    const totalPages = Math.ceil(filteredProxies.length / pageSize);
+    pagination.innerHTML = '';
+    if (totalPages <= 1) return;
+
+    let paginationHTML = '';
+    const maxVisiblePages = 5;
+
+    paginationHTML += `<button class="px-3 py-1 rounded-md ${currentPage === 1 ? 'bg-gray-200 cursor-not-allowed' : 'bg-white border'}" ${currentPage === 1 ? 'disabled' : ''} onclick="changePage(${currentPage - 1})"><i class="fas fa-chevron-left"></i></button>`;
 
     if (totalPages > maxVisiblePages + 2) {
         let startPage = Math.max(2, currentPage - 2);
@@ -259,8 +277,6 @@ function createProxyCardHTML(proxy) {
 async function loadProxiesFromApi() {
     try {
         console.log('[UI] Fetching proxies from /api/proxies ...');
-        // Add { cache: 'no-cache' } to force the browser to always fetch fresh data.
-        // This prevents the UI from getting stuck showing a 'testing' state from the cache.
         const response = await fetch('/api/proxies', { cache: 'no-cache' });
 
         console.log('[UI] /api/proxies response status:', response.status);
@@ -287,9 +303,7 @@ async function loadProxiesFromApi() {
     }
 }
 
-// This function now triggers a full backend health check for all proxies.
-// Backend (trigger-full-check + check-batch) akan memanggil FoolVPN health API secara bertahap,
-// jadi aksi UI seperti refresh halaman / pindah halaman tidak akan mengganggu proses pengecekan.
+// This function triggers a full backend health check for all proxies.
 async function checkProxies() {
     const refreshBtn = document.getElementById('refreshBtn');
     if (refreshBtn && refreshBtn.disabled) return;
@@ -314,8 +328,6 @@ async function checkProxies() {
             throw new Error(errorData.details || `Failed to trigger full check (status ${resp.status}).`);
         }
 
-        // Setelah trigger, semua proxy di DB diset ke status 'testing'.
-        // Kita reload data sekali supaya UI langsung menunjukkan status terbaru.
         allProxies = await loadProxiesFromApi();
         applyFiltersAndRender();
 
@@ -345,10 +357,8 @@ async function importProxies() {
 
         if (lines.length === 0) return showToast('No proxies found in the provided URL.', 'warning');
 
-        // More robust parsing logic to prevent malformed data
         const newProxyObjects = lines.map(line => {
             const parts = line.split(',').map(p => p.trim());
-            // Ensure that IP and Port are present and not empty
             if (parts.length < 2 || !parts[0] || !parts[1]) {
                 console.warn(`Skipping invalid line: ${line}`);
                 return null;
@@ -359,7 +369,7 @@ async function importProxies() {
             const org = parts.slice(3).join(',').trim() || 'Unknown Org';
 
             return { proxy_data, country, org };
-        }).filter(Boolean); // This will filter out any null entries from invalid lines
+        }).filter(Boolean);
 
         const existingProxySet = new Set(allProxies.map(p => p.proxy_data));
         const uniqueNewProxies = newProxyObjects.filter(p => !existingProxySet.has(p.proxy_data));
@@ -381,7 +391,7 @@ async function importProxies() {
         }
 
         const { data: createdProxies } = await postResponse.json();
-        if (!createdProxies) throw new Error("Backend did not return the created proxies.");
+        if (!createdProxies) throw new Error('Backend did not return the created proxies.');
 
         const processedProxies = createdProxies.map(p => {
             const parts = p.proxy_data.split(':');
@@ -430,9 +440,9 @@ function showToast(message, type = 'info') {
         text: message,
         duration: 3000,
         close: true,
-        gravity: "top", // `top` or `bottom`
-        position: "right", // `left`, `center` or `right`
-        stopOnFocus: true, // Prevents dismissing of toast on hover
+        gravity: "top",
+        position: "right",
+        stopOnFocus: true,
     };
 
     switch (type) {
@@ -445,7 +455,7 @@ function showToast(message, type = 'info') {
         case 'warning':
             options.style = { background: "linear-gradient(to right, #f1e05a, #f7b733)" };
             break;
-        default: // info
+        default:
             options.style = { background: "linear-gradient(to right, #00d2ff, #3a7bd5)" };
             break;
     }
@@ -550,12 +560,10 @@ window.openBulkGenerateModal = openBulkGenerateModal;
 function selectProxy(proxyId) {
     selectedProxy = allProxies.find(p => p.id === proxyId);
 
-    // Remove highlight from previously selected card
     document.querySelectorAll('.proxy-card.ring-2').forEach(card => {
         card.classList.remove('ring-2', 'ring-blue-500');
     });
 
-    // Highlight the new selected card
     if (selectedProxy) {
         const cardElement = document.getElementById(`proxy-card-${proxyId}`);
         if (cardElement) {
@@ -580,7 +588,6 @@ function openGenerateConfigModal() {
         return;
     }
 
-    // Populate worker domains from the global 'tunnels' variable (from app.js)
     const workerSelect = document.getElementById('workerDomainSelect');
     workerSelect.innerHTML = '<option value="">Select a worker domain</option>';
     if (window.tunnels && window.tunnels.length > 0) {
@@ -594,7 +601,6 @@ function openGenerateConfigModal() {
         workerSelect.innerHTML = '<option value="">No tunnels configured</option>';
     }
 
-    // Set default UUID
     document.getElementById('uuidInput').value = generateUUID();
 
     document.getElementById('generateConfigModal').classList.remove('hidden');
@@ -634,7 +640,6 @@ async function handleGenerateConfig() {
     const security = 'tls';
 
     const buildUriForProxy = (proxy, uuid, remark) => {
-        // Ambil IP dan port backend dari proxy (proxy_data: IP:Port)
         let ipPart = '';
         let portPart = '';
         if (proxy.proxyIP && proxy.proxyPort) {
@@ -759,7 +764,6 @@ async function handleGenerateConfig() {
         const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(firstUri)}`;
         resultContent.innerHTML = `<div class="text-center"><img src="${qrCodeUrl}" alt="QR Code" class="mx-auto mb-4"></div>`;
     } else {
-        // Untuk bulk + qrcode, kita tampilkan list URI sebagai fallback.
         const textToShow = format === 'qrcode' ? uris.join('\n') : resultString;
         resultContent.innerHTML = `<pre class="bg-gray-100 p-4 rounded-md text-sm break-all whitespace-pre-wrap">${textToShow}</pre>`;
     }
@@ -794,19 +798,16 @@ async function testProxyLatency(event, proxyId) {
     const proxy = allProxies.find(p => p.id === proxyId);
     if (!proxy) return;
 
-    // Avoid double-testing the same proxy at the same time
     if (proxy.status === 'testing') {
         return;
     }
 
-    // Set this proxy to testing state and re-render
     proxy.status = 'testing';
     renderProxies();
 
     try {
         const healthUrl = `${PROXY_HEALTH_API_BASE}/check?ip=${encodeURIComponent(proxy.proxy_data)}`;
 
-        // Tambahkan timeout 10 detik juga untuk test satu-satu supaya hasil lebih pasti.
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000);
 
@@ -830,7 +831,6 @@ async function testProxyLatency(event, proxyId) {
             offline_count: newOfflineCount
         };
 
-        // If this proxy has failed 3 times in a row, delete it instead of updating
         if (!isUp && newOfflineCount >= 3) {
             console.log('[UI] testProxyLatency -> deleting proxy after 3x offline:', proxy.id);
             const deleteResponse = await fetch('/api/proxies', {
@@ -845,14 +845,12 @@ async function testProxyLatency(event, proxyId) {
                 throw new Error(errorData.details || 'Failed to delete proxy after repeated failures.');
             }
 
-            // Remove from local list as well
             allProxies = allProxies.filter(p => p.id !== proxyId);
             applyFiltersAndRender();
             showToast(`Proxy ${proxy.proxy_data} removed after 3 failed checks.`, 'warning');
             return;
         }
 
-        // Persist this single proxy update to the backend
         const saveResponse = await fetch('/api/proxies', {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
@@ -864,7 +862,6 @@ async function testProxyLatency(event, proxyId) {
             throw new Error(errorData.details || 'Failed to save proxy status.');
         }
 
-        // Update local state
         const idx = allProxies.findIndex(p => p.id === proxyId);
         if (idx !== -1) {
             allProxies[idx] = { ...allProxies[idx], ...update };
@@ -876,7 +873,6 @@ async function testProxyLatency(event, proxyId) {
         console.error(`Error testing proxy ${proxy.proxy_data}:`, error);
         showToast(`Error checking proxy: ${error.message}`, 'error');
 
-        // Fallback: mark as offline in local state if something went wrong
         const idx = allProxies.findIndex(p => p.id === proxyId);
         if (idx !== -1) {
             allProxies[idx] = {
