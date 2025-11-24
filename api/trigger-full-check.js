@@ -20,7 +20,7 @@ export default async function handler(request, response) {
         while(moreData) {
             const { data, error } = await supabase
                 .from('proxies')
-                .select('id, proxy_data, country, org')
+                .select('id, proxy_data, country, org, offline_count')
                 .range(page * pageSize, (page + 1) * pageSize - 1);
 
             if (error) throw error;

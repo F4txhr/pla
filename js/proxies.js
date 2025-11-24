@@ -271,6 +271,7 @@ async function loadProxiesFromApi() {
 }
 
 // This function now performs health checks on the client-side and patches the results to the backend.
+// It also tracks how many times a proxy has been offline, and deletes it after 3 consecutive failures.
 async function checkProxies() {
     const refreshBtn = document.getElementById('refreshBtn');
     if (refreshBtn && refreshBtn.disabled) return;
@@ -301,6 +302,8 @@ async function checkProxies() {
             const result = await response.json();
 
             const isUp = response.ok && result.proxyip === true;
+            const prevOffline = proxy.offline_count || 0;
+            const newOfflineCount = isUp ? 0 : prevOffline + 1;
 
             return {
                 id: proxy.id,
@@ -309,10 +312,14 @@ async function checkProxies() {
                 latency: typeof result.delay === 'number' ? result.delay : 0,
                 last_checked: new Date().toISOString(),
                 country: proxy.country,
-                org: proxy.org
+                org: proxy.org,
+                offline_count: newOfflineCount
             };
         } catch (error) {
             console.error(`Error checking proxy ${proxy.proxy_data}:`, error);
+            const prevOffline = proxy.offline_count || 0;
+            const newOfflineCount = prevOffline + 1;
+
             // If the check fails, mark the proxy as offline
             return {
                 id: proxy.id,
@@ -321,7 +328,8 @@ async function checkProxies() {
                 latency: 0,
                 last_checked: new Date().toISOString(),
                 country: proxy.country,
-                org: proxy.org
+                org: proxy.org,
+                offline_count: newOfflineCount
             };
         }
     });
@@ -331,26 +339,54 @@ async function checkProxies() {
 
     console.log('[UI] checkProxies -> updates to send:', updatedProxies.length);
 
+    // Separate proxies to update vs delete (>=3 consecutive offline)
+    const toDeleteIds = updatedProxies
+        .filter(p => p.status === 'offline' && (p.offline_count || 0) >= 3)
+        .map(p => p.id);
+
+    const toUpdate = updatedProxies.filter(p => !toDeleteIds.includes(p.id));
+
     try {
-        // Send all results back to the server in a single bulk update
-        const response = await fetch('/api/proxies', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(updatedProxies)
-        });
+        // Send all results back to the server in a single bulk update (for those not deleted)
+        if (toUpdate.length > 0) {
+            const response = await fetch('/api/proxies', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(toUpdate)
+            });
 
-        console.log('[UI] checkProxies -> PATCH /api/proxies status:', response.status);
+            console.log('[UI] checkProxies -> PATCH /api/proxies status:', response.status);
 
-        if (!response.ok) {
-            const errorData = await response.json();
-            console.error('[UI] checkProxies -> PATCH error body:', errorData);
-            throw new Error(errorData.details || 'Failed to save proxy statuses.');
+            if (!response.ok) {
+                const errorData = await response.json();
+                console.error('[UI] checkProxies -> PATCH error body:', errorData);
+                throw new Error(errorData.details || 'Failed to save proxy statuses.');
+            }
+        }
+
+        // Delete proxies that have been offline 3 times in a row
+        if (toDeleteIds.length > 0) {
+            console.log('[UI] checkProxies -> deleting proxies with 3x offline:', toDeleteIds.length);
+            const deleteResponse = await fetch('/api/proxies', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: toDeleteIds })
+            });
+
+            if (!deleteResponse.ok) {
+                const errorData = await deleteResponse.json().catch(() => ({}));
+                console.error('[UI] checkProxies -> DELETE error body:', errorData);
+            }
         }
 
         const onlineCount = updatedProxies.filter(p => p.status === 'online').length;
         const offlineCount = updatedProxies.length - onlineCount;
 
-        showToast(`Proxy checks complete. Tested ${updatedProxies.length} proxies: ${onlineCount} online, ${offlineCount} offline.`, 'success');
+        showToast(
+            `Proxy checks complete. Tested ${updatedProxies.length} proxies: ${onlineCount} online, ${offlineCount} offline. ` +
+            (toDeleteIds.length > 0 ? `Removed ${toDeleteIds.length} dead proxies.` : ''),
+            'success'
+        );
 
         // Reload all data from the source of truth to ensure consistency
         allProxies = await loadProxiesFromApi();
@@ -432,6 +468,17 @@ async function importProxies() {
         document.getElementById('importModal').classList.add('hidden');
 
         applyFiltersAndRender();
+
+        // Remember this URL as the primary source so we can auto-sync later
+        try {
+            await fetch('/api/proxy-source', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sourceUrl: proxyUrl })
+            });
+        } catch (e) {
+            console.warn('Failed to save proxy source URL:', e);
+        }
 
     } catch (error) {
         console.error('Import Error:', error);
@@ -627,6 +674,8 @@ async function testProxyLatency(event, proxyId) {
         const result = await response.json();
 
         const isUp = response.ok && result.proxyip === true;
+        const prevOffline = proxy.offline_count || 0;
+        const newOfflineCount = isUp ? 0 : prevOffline + 1;
 
         const update = {
             id: proxy.id,
@@ -635,8 +684,31 @@ async function testProxyLatency(event, proxyId) {
             latency: typeof result.delay === 'number' ? result.delay : 0,
             last_checked: new Date().toISOString(),
             country: proxy.country,
-            org: proxy.org
+            org: proxy.org,
+            offline_count: newOfflineCount
         };
+
+        // If this proxy has failed 3 times in a row, delete it instead of updating
+        if (!isUp && newOfflineCount >= 3) {
+            console.log('[UI] testProxyLatency -> deleting proxy after 3x offline:', proxy.id);
+            const deleteResponse = await fetch('/api/proxies', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: [proxy.id] })
+            });
+
+            if (!deleteResponse.ok) {
+                const errorData = await deleteResponse.json().catch(() => ({}));
+                console.error('[UI] testProxyLatency -> DELETE error body:', errorData);
+                throw new Error(errorData.details || 'Failed to delete proxy after repeated failures.');
+            }
+
+            // Remove from local list as well
+            allProxies = allProxies.filter(p => p.id !== proxyId);
+            applyFiltersAndRender();
+            showToast(`Proxy ${proxy.proxy_data} removed after 3 failed checks.`, 'warning');
+            return;
+        }
 
         // Persist this single proxy update to the backend
         const saveResponse = await fetch('/api/proxies', {

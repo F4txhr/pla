@@ -9,10 +9,40 @@ export default async function handler(request, response) {
         return handlePost(request, response);
     } else if (request.method === 'PATCH') {
         return handlePatch(request, response);
+    } else if (request.method === 'DELETE') {
+        return handleDelete(request, response);
     } else {
-        response.setHeader('Allow', ['GET', 'POST', 'PATCH']);
+        response.setHeader('Allow', ['GET', 'POST', 'PATCH', 'DELETE']);
         console.warn(`[API /proxies] Method not allowed: ${request.method}`);
         return response.status(405).json({ error: `Method ${request.method} Not Allowed` });
+    }
+}
+
+async function handleDelete(request, response) {
+    try {
+        const body = request.body || {};
+        const ids = body.ids;
+
+        if (!Array.isArray(ids) || ids.length === 0) {
+            return response.status(400).json({ error: 'Request body must include an array \"ids\" of proxy IDs to delete.' });
+        }
+
+        console.log('[API /proxies] handleDelete -> deleting ids:', ids.length);
+
+        const { error } = await supabase
+            .from('proxies')
+            .delete()
+            .in('id', ids);
+
+        if (error) {
+            console.error('[API /proxies] Supabase error in handleDelete:', error);
+            throw error;
+        }
+
+        return response.status(200).json({ success: true, deleted: ids.length });
+    } catch (error) {
+        console.error('Error deleting proxies:', error);
+        return response.status(500).json({ error: 'Failed to delete proxies.', details: error.message });
     }
 }
 
@@ -28,7 +58,7 @@ async function handleGet(request, response) {
         while (moreData) {
             const { data, error } = await supabase
                 .from('proxies')
-                .select('id, proxy_data, status, latency, last_checked, country, org, created_at')
+                .select('id, proxy_data, status, latency, last_checked, country, org, offline_count, created_at')
                 .range(page * pageSize, (page + 1) * pageSize - 1);
 
             if (error) {
@@ -78,7 +108,8 @@ async function handlePost(request, response) {
                 org: proxy.org,
                 status: 'unknown',
                 latency: 0,
-                last_checked: null
+                last_checked: null,
+                offline_count: 0
             }));
 
             const { data, error: insertError } = await supabase
@@ -90,6 +121,7 @@ async function handlePost(request, response) {
             insertedData = data;
         }
 
+        // Also update the \"last_updated_timestamp\" metadata so the dashboard can show it.
         const { error: metaError } = await supabase
             .from('metadata')
             .upsert({ key: 'last_updated_timestamp', value: new Date().toISOString() });
@@ -133,7 +165,8 @@ async function handlePatch(request, response) {
                 id: u.id,
                 proxy_data: u.proxy_data,
                 status: u.status,
-                latency: u.latency
+                latency: u.latency,
+                offline_count: u.offline_count
             }));
             console.log('[API /proxies] handlePatch -> upsert success. Sample:', sample);
         } else {
@@ -152,7 +185,8 @@ async function handlePatch(request, response) {
                 const patch = {
                     status: u.status,
                     latency: u.latency,
-                    last_checked: u.last_checked
+                    last_checked: u.last_checked,
+                    offline_count: u.offline_count
                 };
 
                 const { error } = await supabase
@@ -164,7 +198,7 @@ async function handlePatch(request, response) {
                     console.error('[API /proxies] Supabase error in handlePatch (update per-row):', error, 'for id:', u.id);
                     // Lanjut ke row berikutnya, tapi tetap log error.
                 } else {
-                    console.log('[API /proxies] handlePatch -> updated proxy id:', u.id, 'status:', u.status, 'latency:', u.latency);
+                    console.log('[API /proxies] handlePatch -> updated proxy id:', u.id, 'status:', u.status, 'latency:', u.latency, 'offline_count:', u.offline_count);
                 }
             }
         }

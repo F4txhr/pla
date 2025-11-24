@@ -27,6 +27,7 @@ CREATE TABLE proxies (
     last_checked TIMESTAMPTZ,
     country VARCHAR(10),
     org TEXT,
+    offline_count INT DEFAULT 0 NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
 

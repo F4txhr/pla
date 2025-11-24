@@ -25,6 +25,7 @@ export default async function handler(request, response) {
         for (let i = 0; i < proxiesToCheck.length; i += subBatchSize) {
             const subBatch = proxiesToCheck.slice(i, i + subBatchSize);
             const updates = [];
+            const deleteIds = [];
 
             const healthChecks = subBatch.map(proxy => {
                 const url = `${API_BASE_URL}/check?ip=${encodeURIComponent(proxy.proxy_data)}`;
@@ -41,6 +42,15 @@ export default async function handler(request, response) {
 
             results.forEach((result, index) => {
                 const originalProxy = subBatch[index];
+                const prevOffline = originalProxy.offline_count || 0;
+                const newOfflineCount = result.success ? 0 : prevOffline + 1;
+
+                if (!result.success && newOfflineCount >= 3) {
+                    // Mark this proxy for deletion after repeated failures
+                    deleteIds.push(originalProxy.id);
+                    return;
+                }
+
                 updates.push({
                     id: originalProxy.id,
                     proxy_data: originalProxy.proxy_data,
@@ -49,6 +59,7 @@ export default async function handler(request, response) {
                     last_checked: new Date().toISOString(),
                     country: originalProxy.country,
                     org: originalProxy.org,
+                    offline_count: newOfflineCount
                 });
             });
 
@@ -61,6 +72,20 @@ export default async function handler(request, response) {
                 if (updateError) {
                     console.error(`Supabase error during sub-batch update (index ${i}):`, updateError);
                     // Do not throw; allow the process to continue with the next sub-batch.
+                }
+            }
+
+            // Delete proxies that have failed 3 times in a row
+            if (deleteIds.length > 0) {
+                const { error: deleteError } = await supabase
+                    .from('proxies')
+                    .delete()
+                    .in('id', deleteIds);
+
+                if (deleteError) {
+                    console.error(`Supabase error during sub-batch delete (index ${i}):`, deleteError);
+                } else {
+                    console.log(`[API /check-batch] Deleted ${deleteIds.length} proxies after 3 failed checks.`);
                 }
             }
         }
