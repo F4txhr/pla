@@ -105,7 +105,20 @@ async function generateConfiguration() {
             const host = hostInfo.domain;
             const port = '443';
             const security = 'tls';
-            const path = encodeURIComponent(`/${proxy.proxyIP}-${proxy.proxyPort}`);
+
+            // Ambil IP dan port dari proxy_data (format: IP:Port)
+            let ipPart = '';
+            let portPart = '';
+            if (proxy.proxyIP && proxy.proxyPort) {
+                ipPart = proxy.proxyIP;
+                portPart = proxy.proxyPort;
+            } else if (proxy.proxy_data) {
+                const [ip, prt] = proxy.proxy_data.split(':');
+                ipPart = ip || '';
+                portPart = prt || '443';
+            }
+            const path = encodeURIComponent(`/${ipPart}-${portPart}`);
+
             const remark = encodeURIComponent(`${protocol.toUpperCase()}-${proxy.country}-${i + 1}`);
 
             let config = '';
