@@ -79,6 +79,12 @@ async function generateConfiguration() {
         const selectedProtocolValue = document.getElementById('protocolSelect').value;
         const count = parseInt(document.getElementById('countInput').value);
 
+        // Custom bugs: satu per baris
+        const bugInput = document.getElementById('bugListInput');
+        const bugList = bugInput
+            ? bugInput.value.split('\n').map(l => l.trim()).filter(Boolean)
+            : [];
+
         // Filter proxies to only include those marked as 'online' in the database.
         // The time-based cache is removed as per the user's request for more accurate, real-time data.
         let availableProxies = allProxies.filter(p => p.status === 'online');
@@ -102,7 +108,7 @@ async function generateConfiguration() {
             const protocol = availableProtocols[Math.floor(Math.random() * availableProtocols.length)];
 
             const uuid = crypto.randomUUID();
-            const host = hostInfo.domain;
+            const workerHost = hostInfo.domain;
             const port = '443';
             const security = 'tls';
 
@@ -119,16 +125,21 @@ async function generateConfiguration() {
             }
             const path = encodeURIComponent(`/${ipPart}-${portPart}`);
 
+            // Pilih bug secara acak jika ada list bug; jika tidak, gunakan workerHost sebagai server
+            const bugHost = bugList.length > 0
+                ? bugList[Math.floor(Math.random() * bugList.length)]
+                : workerHost;
+
             const remark = encodeURIComponent(`${protocol.toUpperCase()}-${proxy.country}-${i + 1}`);
 
             let config = '';
             if (protocol === 'trojan') {
-                config = `trojan://${uuid}@${host}:${port}?path=${path}&security=${security}&host=${host}&type=ws&sni=${host}#${remark}`;
+                config = `trojan://${uuid}@${bugHost}:${port}?path=${path}&security=${security}&host=${workerHost}&type=ws&sni=${workerHost}#${remark}`;
             } else if (protocol === 'vless') {
-                config = `vless://${uuid}@${host}:${port}?path=${path}&security=${security}&encryption=none&host=${host}&type=ws&sni=${host}#${remark}`;
+                config = `vless://${uuid}@${bugHost}:${port}?path=${path}&security=${security}&encryption=none&host=${workerHost}&type=ws&sni=${workerHost}#${remark}`;
             } else if (protocol === 'ss') {
                 const encodedPassword = btoa(`chacha20-ietf-poly1305:${uuid}`);
-                config = `ss://${encodedPassword}@${host}:${port}?plugin=v2ray-plugin;mode=websocket;path=${path};host=${host};tls;sni=${host}#${remark}`;
+                config = `ss://${encodedPassword}@${bugHost}:${port}?plugin=v2ray-plugin;mode=websocket;path=${path};host=${workerHost};tls;sni=${workerHost}#${remark}`;
             }
             configurations.push(config);
         }

@@ -513,13 +513,16 @@ async function handleGenerateConfig() {
     const format = getSelectedFormat('format-btn');
     const workerDomain = document.getElementById('workerDomainSelect').value;
     const uuid = document.getElementById('uuidInput').value;
+    const customBug = document.getElementById('customBugInput').value.trim();
 
     if (!selectedProxy || !vpnType || !port || !format || !workerDomain || !uuid) {
         return showToast('Please fill out all fields in the form.', 'warning');
     }
 
-    // Bangun URI VPN dengan pola yang sama seperti subscription generator
-    const host = workerDomain;
+    // Worker domain adalah domain Cloudflare Worker.
+    // Custom bug (jika diisi) akan menjadi server (outbound.server); workerDomain tetap untuk SNI & WS Host.
+    const workerHost = workerDomain;
+    const bugHost = customBug || workerHost;
     const security = 'tls';
 
     // Ambil IP dan port backend dari selectedProxy (proxy_data: IP:Port)
@@ -540,15 +543,15 @@ async function handleGenerateConfig() {
 
     switch (vpnType) {
         case 'trojan':
-            uri = `trojan://${uuid}@${host}:${port}?path=${path}&security=${security}&host=${host}&type=ws&sni=${host}#${remark}`;
+            uri = `trojan://${uuid}@${bugHost}:${port}?path=${path}&security=${security}&host=${workerHost}&type=ws&sni=${workerHost}#${remark}`;
             break;
         case 'vless':
-            uri = `vless://${uuid}@${host}:${port}?path=${path}&security=${security}&encryption=none&host=${host}&type=ws&sni=${host}#${remark}`;
+            uri = `vless://${uuid}@${bugHost}:${port}?path=${path}&security=${security}&encryption=none&host=${workerHost}&type=ws&sni=${workerHost}#${remark}`;
             break;
         case 'ss': {
             // Sama seperti di subscription generator: method chacha20-ietf-poly1305 + v2ray-plugin WS
             const encodedPassword = btoa(`chacha20-ietf-poly1305:${uuid}`);
-            uri = `ss://${encodedPassword}@${host}:${port}?plugin=v2ray-plugin;mode=websocket;path=${path};host=${host};tls;sni=${host}#${remark}`;
+            uri = `ss://${encodedPassword}@${bugHost}:${port}?plugin=v2ray-plugin;mode=websocket;path=${path};host=${workerHost};tls;sni=${workerHost}#${remark}`;
             break;
         }
         default:
