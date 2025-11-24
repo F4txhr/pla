@@ -23,7 +23,12 @@ function initializeDashboard() {
 async function updateDashboardStats() {
     console.log('Fetching all dashboard stats from /api/stats...');
     try {
-        const response = await fetch('/api/stats');
+        const headers = {};
+        if (window.userKey) {
+            headers['x-user-key'] = window.userKey;
+        }
+
+        const response = await fetch('/api/stats', { headers });
         if (!response.ok) {
             throw new Error(`API responded with ${response.status}`);
         }

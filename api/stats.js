@@ -10,6 +10,8 @@ export default async function handler(request, response) {
     }
 
     try {
+        const userKey = request.headers['x-user-key'] || null;
+
         // Fetch all data in parallel for maximum efficiency
         const [
             { count: totalProxies, error: proxiesError },
@@ -18,14 +20,22 @@ export default async function handler(request, response) {
             { count: totalTunnels, error: tunnelsError },
             { data: lastUpdatedData, error: lastUpdatedError }
         ] = await Promise.all([
-            // Get the total count of all proxies
+            // Get the total count of all proxies (global for now)
             supabase.from('proxies').select('*', { count: 'exact', head: true }),
-            // Get the count of proxies marked as 'online'
+            // Get the count of proxies marked as 'online' (global)
             supabase.from('proxies').select('*', { count: 'exact', head: true }).eq('status', 'online'),
-            // Get the total count of all accounts
+            // Get the total count of all accounts (global)
             supabase.from('accounts').select('*', { count: 'exact', head: true }),
-            // Get the total count of all tunnels
-            supabase.from('tunnels').select('*', { count: 'exact', head: true }),
+            // Get the total count of tunnels for this userKey
+            (() => {
+                let q = supabase.from('tunnels').select('*', { count: 'exact', head: true });
+                if (userKey) {
+                    q = q.eq('user_key', userKey);
+                } else {
+                    q = q.is('user_key', null);
+                }
+                return q;
+            })(),
             // Get the last updated timestamp from the metadata table
             supabase.from('metadata').select('value').eq('key', 'last_updated_timestamp').single()
         ]);
