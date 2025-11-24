@@ -145,6 +145,12 @@ function renderProxies() {
     proxyContainer.innerHTML = paginatedProxies.map(createProxyCardHTML).join('');
 }
 
+// Helper: get proxies shown on the current page
+function getCurrentPageProxies() {
+    const startIndex = (currentPage - 1) * pageSize;
+    return filteredProxies.slice(startIndex, startIndex + pageSize);
+}
+
 function createProxyCardHTML(proxy) {
     const displayStatus = proxy.status || 'unknown';
     let latencyClass = 'text-gray-500';
@@ -271,29 +277,32 @@ async function loadProxiesFromApi() {
 }
 
 // This function now performs health checks on the client-side and patches the results to the backend.
-// It also tracks how many times a proxy has been offline, and deletes it after 3 consecutive failures.
+// Untuk mengurangi error (false offline) karena terlalu banyak request paralel,
+// Refresh sekarang hanya mengetes proxy yang MUNCUL di halaman saat ini (current page),
+// bukan semua filteredProxies sekaligus.
 async function checkProxies() {
     const refreshBtn = document.getElementById('refreshBtn');
     if (refreshBtn && refreshBtn.disabled) return;
 
-    console.log('[UI] checkProxies -> start, filteredProxies:', filteredProxies.length);
+    const currentPageProxies = getCurrentPageProxies();
+    console.log('[UI] checkProxies -> start, currentPageProxies:', currentPageProxies.length);
 
-    if (filteredProxies.length === 0) {
-        showToast('No proxies to test.', 'info');
+    if (currentPageProxies.length === 0) {
+        showToast('No proxies to test on this page.', 'info');
         return;
     }
 
     refreshBtn.disabled = true;
     refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Testing...';
-    showToast(`Testing ${filteredProxies.length} proxies... This may take a moment.`, 'info');
+    showToast(`Testing ${currentPageProxies.length} proxies on this page...`, 'info');
 
-    // Set UI to 'testing' state for all visible (filtered) proxies
-    for (const proxy of filteredProxies) {
+    // Set UI to 'testing' state untuk proxy di halaman sekarang saja
+    for (const proxy of currentPageProxies) {
         proxy.status = 'testing';
     }
     renderProxies(); // Re-render to show 'testing' status
 
-    const checkPromises = filteredProxies.map(async (proxy) => {
+    const checkPromises = currentPageProxies.map(async (proxy) => {
         try {
             // Use the external FoolVPN health check API (GET with query parameter)
             const healthUrl = `${PROXY_HEALTH_API_BASE}/check?ip=${encodeURIComponent(proxy.proxy_data)}`;
@@ -344,7 +353,7 @@ async function checkProxies() {
     // Wait for all checks to complete
     const updatedProxies = await Promise.all(checkPromises);
 
-    console.log('[UI] checkProxies -> updates to send:', updatedProxies.length);
+    console.log('[UI] checkProxies -> updates to send (current page):', updatedProxies.length);
 
     // Separate proxies to update vs delete (>=3 consecutive offline)
     const toDeleteIds = updatedProxies
@@ -390,7 +399,7 @@ async function checkProxies() {
         const offlineCount = updatedProxies.length - onlineCount;
 
         showToast(
-            `Proxy checks complete. Tested ${updatedProxies.length} proxies: ${onlineCount} online, ${offlineCount} offline. ` +
+            `Proxy checks complete (this page). Tested ${updatedProxies.length} proxies: ${onlineCount} online, ${offlineCount} offline. ` +
             (toDeleteIds.length > 0 ? `Removed ${toDeleteIds.length} dead proxies.` : ''),
             'success'
         );
