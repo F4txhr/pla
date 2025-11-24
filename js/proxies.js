@@ -298,7 +298,14 @@ async function checkProxies() {
             // Use the external FoolVPN health check API (GET with query parameter)
             const healthUrl = `${PROXY_HEALTH_API_BASE}/check?ip=${encodeURIComponent(proxy.proxy_data)}`;
             console.log('[UI] checkProxies -> calling health API:', healthUrl);
-            const response = await fetch(healthUrl);
+
+            // Tambahkan timeout 10 detik supaya kita benar-benar menunggu respons yang lama.
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+            const response = await fetch(healthUrl, { signal: controller.signal });
+            clearTimeout(timeoutId);
+
             const result = await response.json();
 
             const isUp = response.ok && result.proxyip === true;
@@ -670,7 +677,14 @@ async function testProxyLatency(event, proxyId) {
 
     try {
         const healthUrl = `${PROXY_HEALTH_API_BASE}/check?ip=${encodeURIComponent(proxy.proxy_data)}`;
-        const response = await fetch(healthUrl);
+
+        // Tambahkan timeout 10 detik juga untuk test satu-satu supaya hasil lebih pasti.
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+        const response = await fetch(healthUrl, { signal: controller.signal });
+        clearTimeout(timeoutId);
+
         const result = await response.json();
 
         const isUp = response.ok && result.proxyip === true;
