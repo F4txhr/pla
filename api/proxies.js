@@ -45,7 +45,15 @@ async function handleGet(request, response) {
             }
         }
 
+        // Log distribusi status untuk debug (berapa online/offline/unknown)
+        const statusCounts = allData.reduce((acc, row) => {
+            const s = row.status || 'null';
+            acc[s] = (acc[s] || 0) + 1;
+            return acc;
+        }, {});
         console.log('[API /proxies] handleGet -> total rows returned:', allData.length);
+        console.log('[API /proxies] handleGet -> status counts:', statusCounts);
+
         return response.status(200).json(allData);
     } catch (error) {
         console.error('Error fetching proxies:', error);

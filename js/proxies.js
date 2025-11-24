@@ -347,7 +347,10 @@ async function checkProxies() {
             throw new Error(errorData.details || 'Failed to save proxy statuses.');
         }
 
-        showToast('Proxy checks complete. Updating list.', 'success');
+        const onlineCount = updatedProxies.filter(p => p.status === 'online').length;
+        const offlineCount = updatedProxies.length - onlineCount;
+
+        showToast(`Proxy checks complete. Tested ${updatedProxies.length} proxies: ${onlineCount} online, ${offlineCount} offline.`, 'success');
 
         // Reload all data from the source of truth to ensure consistency
         allProxies = await loadProxiesFromApi();
