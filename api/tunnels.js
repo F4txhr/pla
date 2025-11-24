@@ -23,7 +23,7 @@ async function handleGet(request, response, userKey) {
     try {
         let query = supabase
             .from('tunnels')
-            .select('id, name, domain, status, created_at, user_key')
+            .select('id, name, domain, cf_stats_id, status, created_at, user_key')
             .order('created_at', { ascending: false });
 
         if (userKey) {
@@ -42,7 +42,7 @@ async function handleGet(request, response, userKey) {
 
 async function handlePost(request, response, userKey) {
     try {
-        const { name, domain } = request.body;
+        const { name, domain, cf_stats_id } = request.body;
         if (!name || !domain) {
             return response.status(400).json({ error: 'Name and domain are required.' });
         }
@@ -50,6 +50,7 @@ async function handlePost(request, response, userKey) {
         const insertPayload = {
             name,
             domain,
+            cf_stats_id: cf_stats_id || null,
             user_key: userKey || null
         };
 
@@ -67,7 +68,7 @@ async function handlePost(request, response, userKey) {
 
 async function handlePatch(request, response, userKey) {
     try {
-        const { id, name, domain, status } = request.body;
+        const { id, name, domain, status, cf_stats_id } = request.body;
         if (!id) {
             return response.status(400).json({ error: 'An ID is required to update a tunnel.' });
         }
@@ -76,9 +77,12 @@ async function handlePatch(request, response, userKey) {
         if (name) updateData.name = name;
         if (domain) updateData.domain = domain;
         if (status) updateData.status = status;
+        if (typeof cf_stats_id !== 'undefined') {
+            updateData.cf_stats_id = cf_stats_id || null;
+        }
 
         if (Object.keys(updateData).length === 0) {
-            return response.status(400).json({ error: 'Nothing to update. Provide name, domain, or status.' });
+            return response.status(400).json({ error: 'Nothing to update. Provide name, domain, status, or cf_stats_id.' });
         }
 
         let query = supabase

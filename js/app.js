@@ -168,6 +168,8 @@ function openAddTunnelModal() {
     editingTunnelId = null;
     document.getElementById('tunnelModalTitle').textContent = 'Add New Tunnel';
     document.getElementById('tunnelForm').reset();
+    const cfInput = document.getElementById('tunnelCfStatsId');
+    if (cfInput) cfInput.value = '';
     document.getElementById('tunnelModal').classList.remove('hidden');
 }
 
@@ -175,8 +177,14 @@ async function saveTunnel(e) {
     e.preventDefault();
     const name = document.getElementById('tunnelName').value;
     const domain = document.getElementById('tunnelDomain').value;
+    const cfStatsInput = document.getElementById('tunnelCfStatsId');
+    const cf_stats_id = cfStatsInput ? (cfStatsInput.value || '').trim() : null;
+
     const method = editingTunnelId ? 'PATCH' : 'POST';
-    const body = editingTunnelId ? { id: editingTunnelId, name, domain } : { name, domain };
+    const baseBody = { name, domain };
+    const body = editingTunnelId
+        ? { id: editingTunnelId, ...baseBody, cf_stats_id }
+        : { ...baseBody, cf_stats_id };
 
     try {
         const headers = { 'Content-Type': 'application/json' };
@@ -195,11 +203,12 @@ async function saveTunnel(e) {
             throw new Error(errorData.details || 'Failed to save tunnel.');
         }
 
+        const savedTunnel = await response.json();
+
         await loadTunnelsFromApi();
         renderTunnelList();
         document.getElementById('tunnelModal').classList.add('hidden');
 
-        const savedTunnel = await response.json();
         const tunnelToCheck = tunnels.find(t => t.id === savedTunnel.id);
         if (tunnelToCheck) {
             await checkSingleTunnelStatus(tunnelToCheck);
@@ -219,6 +228,8 @@ function editTunnel(tunnelId) {
     document.getElementById('tunnelModalTitle').textContent = 'Edit Tunnel';
     document.getElementById('tunnelName').value = tunnel.name;
     document.getElementById('tunnelDomain').value = tunnel.domain;
+    const cfInput = document.getElementById('tunnelCfStatsId');
+    if (cfInput) cfInput.value = tunnel.cf_stats_id || '';
     document.getElementById('tunnelModal').classList.remove('hidden');
 }
 

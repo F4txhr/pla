@@ -175,11 +175,30 @@ async function fetchCfUsage() {
             if (tunnel.status === 'online') statusColor = 'text-green-600 bg-green-50';
             if (tunnel.status === 'offline') statusColor = 'text-red-600 bg-red-50';
 
+            let usageLine = '';
+            if (tunnel.usage) {
+                if (tunnel.usage.type === 'zone') {
+                    const req = tunnel.usage.total_requests_today ?? 0;
+                    const bytes = tunnel.usage.total_bandwidth_today_bytes ?? 0;
+                    const mb = (bytes / (1024 * 1024)).toFixed(2);
+                    usageLine = `<p class="text-xs text-gray-500">Today: ${req} req, ${mb} MB</p>`;
+                } else if (tunnel.usage.type === 'worker') {
+                    const req = tunnel.usage.total_requests_today ?? 0;
+                    const errCount = tunnel.usage.total_errors_today ?? 0;
+                    // CPU time is in microseconds; convert p90 to ms if present
+                    const cpuP90us = tunnel.usage.cpu_time_p90;
+                    const cpuP90ms = cpuP90us != null ? (cpuP90us / 1000).toFixed(2) : null;
+                    const cpuPart = cpuP90ms != null ? `, CPU p90: ${cpuP90ms} ms` : '';
+                    usageLine = `<p class="text-xs text-gray-500">Today: ${req} req, ${errCount} errors${cpuPart}</p>`;
+                }
+            }
+
             return `
                 <div class="py-2 flex items-center justify-between">
                     <div>
                         <p class="text-sm font-medium text-gray-800">${tunnel.name}</p>
                         <p class="text-xs text-gray-500">${tunnel.domain}</p>
+                        ${usageLine}
                     </div>
                     <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusColor}">
                         ${tunnel.status || 'unknown'}
