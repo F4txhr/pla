@@ -64,16 +64,18 @@ export default async function handler(request, response) {
             return response.status(400).json({ error: 'cf_stats_id is required (string).' });
         }
 
-        // Load CF config for this user
-        const { data: cfg, error: cfgError } = await supabase
+        // Load CF config for this user.
+        // For multi-account, we simply use the first config for now.
+        const { data: cfgRows, error: cfgError } = await supabase
             .from('cf_configs')
-            .select('cf_api_token, cf_account_id')
+            .select('id, cf_api_token, cf_account_id')
             .eq('user_key', userKey)
-            .single();
+            .order('created_at', { ascending: true });
 
-        if (cfgError && cfgError.code !== 'PGRST116') {
+        if (cfgError) {
             throw cfgError;
         }
+        const cfg = Array.isArray(cfgRows) && cfgRows.length > 0 ? cfgRows[0] : null;
         if (!cfg) {
             return response.status(400).json({ error: 'No Cloudflare config found for this user. Please save it in the dashboard first.' });
         }

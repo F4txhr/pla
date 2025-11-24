@@ -18,63 +18,59 @@ export default async function handler(request, response) {
     }
 }
 
+// GET /api/cf-config
+// Returns all CF configs for the current user (metadata only, no tokens).
 async function handleGet(userKey, response) {
     try {
         const { data, error } = await supabase
             .from('cf_configs')
-            .select('user_key, cf_account_id, created_at')
+            .select('id, user_key, label, cf_account_id, created_at')
             .eq('user_key', userKey)
-            .single();
+            .order('created_at', { ascending: true });
 
-        if (error && error.code !== 'PGRST116') {
-            throw error;
-        }
-
-        if (!data) {
-            return response.status(200).json({
-                user_key: userKey,
-                hasToken: false,
-                cf_account_id: null,
-                created_at: null
-            });
-        }
+        if (error) throw error;
 
         return response.status(200).json({
-            user_key: data.user_key,
-            hasToken: true,
-            cf_account_id: data.cf_account_id,
-            created_at: data.created_at
+            user_key: userKey,
+            configs: data || []
         });
     } catch (err) {
         console.error('[cf-config] GET error:', err);
-        return response.status(500).json({ error: 'Failed to load CF config.', details: err.message });
+        return response.status(500).json({ error: 'Failed to load CF config list.', details: err.message });
     }
 }
 
+// POST /api/cf-config
+// Creates a new CF config (one per CF account). Multiple configs per user are allowed.
 async function handlePost(userKey, request, response) {
     try {
-        const { cf_api_token, cf_account_id } = request.body || {};
+        const { label, cf_api_token, cf_account_id } = request.body || {};
 
         if (!cf_api_token) {
             return response.status(400).json({ error: 'cf_api_token is required.' });
         }
 
-        const upsertPayload = {
+        const finalLabel = (label && String(label).trim()) || 'Default';
+
+        const insertPayload = {
             user_key: userKey,
+            label: finalLabel,
             cf_api_token,
             cf_account_id: cf_account_id || null
         };
 
         const { data, error } = await supabase
             .from('cf_configs')
-            .upsert(upsertPayload, { onConflict: 'user_key' })
-            .select('user_key, cf_account_id, created_at')
+            .insert([insertPayload])
+            .select('id, user_key, label, cf_account_id, created_at')
             .single();
 
         if (error) throw error;
 
-        return response.status(200).json({
+        return response.status(201).json({
+            id: data.id,
             user_key: data.user_key,
+            label: data.label,
             cf_account_id: data.cf_account_id,
             created_at: data.created_at
         });

@@ -154,6 +154,7 @@ async function loadCfConfig() {
     try {
         const statusEl = document.getElementById('cfConfigStatus');
         const accountInput = document.getElementById('cfAccountIdInput');
+        const labelInput = document.getElementById('cfLabelInput');
         if (!statusEl) return;
 
         const headers = {};
@@ -166,14 +167,16 @@ async function loadCfConfig() {
         }
         const data = await res.json();
 
-        if (data.cf_account_id && accountInput) {
-            accountInput.value = data.cf_account_id;
-        }
-
-        if (data.hasToken) {
-            statusEl.textContent = `CF config registered for user "${data.user_key}".`;
-        } else {
+        const configs = Array.isArray(data.configs) ? data.configs : [];
+        if (configs.length === 0) {
             statusEl.textContent = 'No CF config saved yet for this user.';
+            if (accountInput) accountInput.value = '';
+            if (labelInput) labelInput.value = '';
+        } else {
+            statusEl.textContent = `You have ${configs.length} Cloudflare config(s) registered.`;
+            // As a hint, show the first account ID in the input
+            if (accountInput) accountInput.value = configs[0].cf_account_id || '';
+            if (labelInput) labelInput.value = '';
         }
     } catch (err) {
         console.error('[Dashboard] Failed to load CF config:', err);
@@ -186,10 +189,12 @@ async function loadCfConfig() {
 async function saveCfConfig(e) {
     e.preventDefault();
     try {
+        const labelInput = document.getElementById('cfLabelInput');
         const accountInput = document.getElementById('cfAccountIdInput');
         const tokenInput = document.getElementById('cfApiTokenInput');
         const statusEl = document.getElementById('cfConfigStatus');
 
+        const label = labelInput ? labelInput.value.trim() : '';
         const cf_account_id = accountInput ? accountInput.value.trim() : '';
         const cf_api_token = tokenInput ? tokenInput.value.trim() : '';
 
@@ -206,7 +211,7 @@ async function saveCfConfig(e) {
         const res = await fetch('/api/cf-config', {
             method: 'POST',
             headers,
-            body: JSON.stringify({ cf_api_token, cf_account_id })
+            body: JSON.stringify({ label, cf_api_token, cf_account_id })
         });
 
         const data = await res.json();
@@ -215,12 +220,11 @@ async function saveCfConfig(e) {
         }
 
         if (statusEl) {
-            statusEl.textContent = `CF config saved for user "${data.user_key}".`;
+            statusEl.textContent = `CF config "${data.label}" saved for user "${data.user_key}".`;
         }
-        // Clear token field after save for safety
-        if (tokenInput) {
-            tokenInput.value = '';
-        }
+        // Clear fields after save for safety
+        if (tokenInput) tokenInput.value = '';
+        if (labelInput) labelInput.value = '';
 
         // Refresh usage with new config
         fetchCfUsage();
@@ -269,7 +273,6 @@ async function fetchCfUsage() {
 
         const zones = data.tunnels.filter(t => t.usage && t.usage.type === 'zone');
         const workers = data.tunnels.filter(t => t.usage && t.usage.type === 'worker');
-        const others = data.tunnels.filter(t => !t.usage);
 
         // Global totals across all tunnels
         const totalZoneRequests = zones.reduce((sum, z) => sum + (z.usage.total_requests_today ?? 0), 0);
@@ -281,83 +284,9 @@ async function fetchCfUsage() {
         if (totalWorkerReqEl) totalWorkerReqEl.textContent = String(totalWorkerRequests);
         if (totalZoneMbEl) totalZoneMbEl.textContent = (totalZoneBytes / (1024 * 1024)).toFixed(2);
 
-        // If we have at least one zone tunnel, build a grouped \"card\" view:
-        if (zones.length > 0) {
-            const zoneTunnel = zones[0];
-            const zoneUsage = zoneTunnel.usage;
-            const zoneReq = zoneUsage.total_requests_today ?? 0;
-            const zoneBytes = zoneUsage.total_bandwidth_today_bytes ?? 0;
-            const zoneMb = (zoneBytes / (1024 * 1024)).toFixed(2);
-            const zoneTitle = zoneTunnel.name || `Zone ${zoneUsage.zone_id || ''}`;
-
-            const workerLines = workers.map((tunnel) => {
-                let statusColor = 'text-yellow-600 bg-yellow-50';
-                if (tunnel.status === 'online') statusColor = 'text-green-600 bg-green-50';
-                if (tunnel.status === 'offline') statusColor = 'text-red-600 bg-red-50';
-
-                const req = tunnel.usage.total_requests_today ?? 0;
-                const errCount = tunnel.usage.total_errors_today ?? 0;
-                const cpuP90us = tunnel.usage.cpu_time_p90;
-                const cpuP90ms = cpuP90us != null ? (cpuP90us / 1000).toFixed(2) : null;
-                const cpuPart = cpuP90ms != null ? `, CPU p90: ${cpuP90ms} ms` : '';
-
-                return `
-                    <div class="py-1 flex items-center justify-between">
-                        <div>
-                            <p class="text-sm font-medium text-gray-800">${tunnel.name}</p>
-                            <p class="text-xs text-gray-500">${tunnel.domain}</p>
-                            <p class="text-xs text-gray-500">Today: ${req} req, ${errCount} errors${cpuPart}</p>
-                        </div>
-                        <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusColor}">
-                            ${tunnel.status || 'unknown'}
-                        </span>
-                    </div>
-                `;
-            }).join('') || '<p class="text-xs text-gray-500">No worker metrics yet.</p>';
-
-            const otherLines = others.map((tunnel) => {
-                let statusColor = 'text-yellow-600 bg-yellow-50';
-                if (tunnel.status === 'online') statusColor = 'text-green-600 bg-green-50';
-                if (tunnel.status === 'offline') statusColor = 'text-red-600 bg-red-50';
-
-                return `
-                    <div class="py-1 flex items-center justify-between">
-                        <div>
-                            <p class="text-sm font-medium text-gray-800">${tunnel.name}</p>
-                            <p class="text-xs text-gray-500">${tunnel.domain}</p>
-                        </div>
-                        <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusColor}">
-                            ${tunnel.status || 'unknown'}
-                        </span>
-                    </div>
-                `;
-            }).join('');
-
-            listEl.innerHTML = `
-                <div class="rounded-lg border border-gray-200 p-3 mb-2">
-                    <div class="flex items-center justify-between mb-2">
-                        <div>
-                            <p class="text-sm font-semibold text-gray-900">${zoneTitle}</p>
-                            <p class="text-xs text-gray-500">Zone ID: ${zoneUsage.zone_id || 'N/A'}</p>
-                        </div>
-                        <div class="text-right text-xs text-gray-700">
-                            <p>Today (zone): ${zoneReq} req</p>
-                            <p>${zoneMb} MB</p>
-                        </div>
-                    </div>
-                    <div class="mt-2 pt-2 border-t border-gray-200">
-                        <p class="text-xs font-semibold text-gray-700 mb-1">Workers in this account</p>
-                        ${workerLines}
-                    </div>
-                    ${otherLines ? `
-                    <div class="mt-2 pt-2 border-t border-dashed border-gray-200">
-                        <p class="text-xs font-semibold text-gray-700 mb-1">Other tunnels</p>
-                        ${otherLines}
-                    </div>` : ''}
-                </div>
-            `;
-        } else {
-            // Fallback: no zone usage, show flat list
+        const configs = Array.isArray(data.cfConfigs) ? data.cfConfigs : [];
+        if (!configs.length) {
+            // No configs: show flat list of tunnels (basic status + worker usage if any)
             listEl.innerHTML = data.tunnels.map((tunnel) => {
                 let statusColor = 'text-yellow-600 bg-yellow-50';
                 if (tunnel.status === 'online') statusColor = 'text-green-600 bg-green-50';
@@ -386,6 +315,105 @@ async function fetchCfUsage() {
                     </div>
                 `;
             }).join('');
+            return;
+        }
+
+        // Multi-account: one card per CF config
+        const cards = [];
+
+        configs.forEach(cfg => {
+            const cfgTunnels = data.tunnels.filter(t => t.cf_config_id === cfg.id);
+            if (!cfgTunnels.length) return;
+
+            const cfgZones = cfgTunnels.filter(t => t.usage && t.usage.type === 'zone');
+            const cfgWorkers = cfgTunnels.filter(t => t.usage && t.usage.type === 'worker');
+            const cfgOthers = cfgTunnels.filter(t => !t.usage);
+
+            const cfgZoneReq = cfgZones.reduce((sum, z) => sum + (z.usage.total_requests_today ?? 0), 0);
+            const cfgZoneBytes = cfgZones.reduce((sum, z) => sum + (z.usage.total_bandwidth_today_bytes ?? 0), 0);
+            const cfgZoneMb = (cfgZoneBytes / (1024 * 1024)).toFixed(2);
+
+            const title = cfg.label || `Config ${cfg.id}`;
+            const accountLine = cfg.cf_account_id ? `Account: ${cfg.cf_account_id}` : 'Account: (none)';
+
+            const zoneSample = cfgZones[0];
+            const zoneSampleLine = zoneSample && zoneSample.usage?.zone_id
+                ? `Zone sample: ${zoneSample.usage.zone_id}`
+                : '';
+
+            const workerLines = cfgWorkers.map((tunnel) => {
+                let statusColor = 'text-yellow-600 bg-yellow-50';
+                if (tunnel.status === 'online') statusColor = 'text-green-600 bg-green-50';
+                if (tunnel.status === 'offline') statusColor = 'text-red-600 bg-red-50';
+
+                const req = tunnel.usage.total_requests_today ?? 0;
+                const errCount = tunnel.usage.total_errors_today ?? 0;
+                const cpuP90us = tunnel.usage.cpu_time_p90;
+                const cpuP90ms = cpuP90us != null ? (cpuP90us / 1000).toFixed(2) : null;
+                const cpuPart = cpuP90ms != null ? `, CPU p90: ${cpuP90ms} ms` : '';
+
+                return `
+                    <div class="py-1 flex items-center justify-between">
+                        <div>
+                            <p class="text-sm font-medium text-gray-800">${tunnel.name}</p>
+                            <p class="text-xs text-gray-500">${tunnel.domain}</p>
+                            <p class="text-xs text-gray-500">Today: ${req} req, ${errCount} errors${cpuPart}</p>
+                        </div>
+                        <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusColor}">
+                            ${tunnel.status || 'unknown'}
+                        </span>
+                    </div>
+                `;
+            }).join('') || '<p class="text-xs text-gray-500">No worker metrics yet.</p>';
+
+            const otherLines = cfgOthers.map((tunnel) => {
+                let statusColor = 'text-yellow-600 bg-yellow-50';
+                if (tunnel.status === 'online') statusColor = 'text-green-600 bg-green-50';
+                if (tunnel.status === 'offline') statusColor = 'text-red-600 bg-red-50';
+
+                return `
+                    <div class="py-1 flex items-center justify-between">
+                        <div>
+                            <p class="text-sm font-medium text-gray-800">${tunnel.name}</p>
+                            <p class="text-xs text-gray-500">${tunnel.domain}</p>
+                        </div>
+                        <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusColor}">
+                            ${tunnel.status || 'unknown'}
+                        </span>
+                    </div>
+                `;
+            }).join('');
+
+            cards.push(`
+                <div class="rounded-lg border border-gray-200 p-3 mb-2">
+                    <div class="flex items-center justify-between mb-2">
+                        <div>
+                            <p class="text-sm font-semibold text-gray-900">${title}</p>
+                            <p class="text-xs text-gray-500">${accountLine}</p>
+                            ${zoneSampleLine ? `<p class="text-xs text-gray-500">${zoneSampleLine}</p>` : ''}
+                        </div>
+                        <div class="text-right text-xs text-gray-700">
+                            <p>Zone today: ${cfgZoneReq} req</p>
+                            <p>${cfgZoneMb} MB</p>
+                        </div>
+                    </div>
+                    <div class="mt-2 pt-2 border-t border-gray-200">
+                        <p class="text-xs font-semibold text-gray-700 mb-1">Workers</p>
+                        ${workerLines}
+                    </div>
+                    ${otherLines ? `
+                    <div class="mt-2 pt-2 border-t border-dashed border-gray-200">
+                        <p class="text-xs font-semibold text-gray-700 mb-1">Other tunnels</p>
+                        ${otherLines}
+                    </div>` : ''}
+                </div>
+            `);
+        });
+
+        if (!cards.length) {
+            listEl.innerHTML = '<p class="text-sm text-gray-500">No tunnels associated with any CF config yet.</p>';
+        } else {
+            listEl.innerHTML = cards.join('');
         }
     } catch (err) {
         console.error('[Dashboard] Failed to fetch CF usage:', err);

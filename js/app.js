@@ -91,6 +91,37 @@ function setupCommonEventListeners() {
 
 let tunnels = [];
 let editingTunnelId = null;
+let cfConfigsCache = [];
+
+// Load all CF configs for this user (for tunnel assignment)
+async function loadCfConfigsForTunnels() {
+    try {
+        const headers = {};
+        if (window.userKey) {
+            headers['x-user-key'] = window.userKey;
+        }
+        const res = await fetch('/api/cf-config', { headers });
+        if (!res.ok) {
+            throw new Error(`CF config API responded with ${res.status}`);
+        }
+        const data = await res.json();
+        cfConfigsCache = Array.isArray(data.configs) ? data.configs : [];
+
+        const select = document.getElementById('tunnelCfConfigSelect');
+        if (select) {
+            select.innerHTML = '<option value=\"\">No CF config</option>';
+            cfConfigsCache.forEach(cfg => {
+                const opt = document.createElement('option');
+                opt.value = String(cfg.id);
+                opt.textContent = cfg.label || cfg.cf_account_id || `Config ${cfg.id}`;
+                select.appendChild(opt);
+            });
+        }
+    } catch (err) {
+        console.error('Error loading CF configs for tunnels:', err);
+        cfConfigsCache = [];
+    }
+}
 
 async function loadTunnelsFromApi() {
     try {
@@ -110,6 +141,8 @@ async function loadTunnelsFromApi() {
 }
 
 async function setupTunnelManagement() {
+    // Load configs first so the modal select can be populated.
+    await loadCfConfigsForTunnels();
     // 1. Load tunnels with their last known status from the database.
     await loadTunnelsFromApi();
     // 2. Render the list immediately with the stored data.
@@ -170,6 +203,8 @@ function openAddTunnelModal() {
     document.getElementById('tunnelForm').reset();
     const cfInput = document.getElementById('tunnelCfStatsId');
     if (cfInput) cfInput.value = '';
+    const cfgSelect = document.getElementById('tunnelCfConfigSelect');
+    if (cfgSelect) cfgSelect.value = '';
     document.getElementById('tunnelModal').classList.remove('hidden');
 }
 
@@ -178,13 +213,15 @@ async function saveTunnel(e) {
     const name = document.getElementById('tunnelName').value;
     const domain = document.getElementById('tunnelDomain').value;
     const cfStatsInput = document.getElementById('tunnelCfStatsId');
+    const cfConfigSelect = document.getElementById('tunnelCfConfigSelect');
     const cf_stats_id = cfStatsInput ? (cfStatsInput.value || '').trim() : null;
+    const cf_config_id = cfConfigSelect && cfConfigSelect.value ? parseInt(cfConfigSelect.value, 10) : null;
 
     const method = editingTunnelId ? 'PATCH' : 'POST';
     const baseBody = { name, domain };
     const body = editingTunnelId
-        ? { id: editingTunnelId, ...baseBody, cf_stats_id }
-        : { ...baseBody, cf_stats_id };
+        ? { id: editingTunnelId, ...baseBody, cf_stats_id, cf_config_id }
+        : { ...baseBody, cf_stats_id, cf_config_id };
 
     try {
         const headers = { 'Content-Type': 'application/json' };
@@ -230,6 +267,17 @@ function editTunnel(tunnelId) {
     document.getElementById('tunnelDomain').value = tunnel.domain;
     const cfInput = document.getElementById('tunnelCfStatsId');
     if (cfInput) cfInput.value = tunnel.cf_stats_id || '';
+    const cfgSelect = document.getElementById('tunnelCfConfigSelect');
+    if (cfgSelect) {
+        cfgSelect.innerHTML = '<option value=\"\">No CF config</option>';
+        cfConfigsCache.forEach(cfg => {
+            const opt = document.createElement('option');
+            opt.value = String(cfg.id);
+            opt.textContent = cfg.label || cfg.cf_account_id || `Config ${cfg.id}`;
+            cfgSelect.appendChild(opt);
+        });
+        cfgSelect.value = tunnel.cf_config_id ? String(tunnel.cf_config_id) : '';
+    }
     document.getElementById('tunnelModal').classList.remove('hidden');
 }
 
