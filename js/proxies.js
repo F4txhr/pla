@@ -540,16 +540,26 @@ function openBulkGenerateModal() {
     isBulkGenerate = true;
 
     const workerSelect = document.getElementById('workerDomainSelect');
-    workerSelect.innerHTML = '<option value="">Select a worker domain</option>';
-    if (window.tunnels && window.tunnels.length > 0) {
-        window.tunnels.forEach(tunnel => {
+    workerSelect.innerHTML = '';
+
+    const tunnels = Array.isArray(window.tunnels) ? window.tunnels : [];
+    if (tunnels.length > 0) {
+        const anyOption = document.createElement('option');
+        anyOption.value = 'any';
+        anyOption.textContent = 'Any worker (Mix)';
+        workerSelect.appendChild(anyOption);
+
+        tunnels.forEach(tunnel => {
             const option = document.createElement('option');
             option.value = tunnel.domain;
             option.textContent = tunnel.name;
             workerSelect.appendChild(option);
         });
     } else {
-        workerSelect.innerHTML = '<option value="">No tunnels configured</option>';
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = 'No tunnels configured';
+        workerSelect.appendChild(opt);
     }
 
     document.getElementById('uuidInput').value = generateUUID();
@@ -589,16 +599,26 @@ function openGenerateConfigModal() {
     }
 
     const workerSelect = document.getElementById('workerDomainSelect');
-    workerSelect.innerHTML = '<option value="">Select a worker domain</option>';
-    if (window.tunnels && window.tunnels.length > 0) {
-        window.tunnels.forEach(tunnel => {
+    workerSelect.innerHTML = '';
+
+    const tunnels = Array.isArray(window.tunnels) ? window.tunnels : [];
+    if (tunnels.length > 0) {
+        const anyOption = document.createElement('option');
+        anyOption.value = 'any';
+        anyOption.textContent = 'Any worker (Mix)';
+        workerSelect.appendChild(anyOption);
+
+        tunnels.forEach(tunnel => {
             const option = document.createElement('option');
             option.value = tunnel.domain;
             option.textContent = tunnel.name;
             workerSelect.appendChild(option);
         });
     } else {
-        workerSelect.innerHTML = '<option value="">No tunnels configured</option>';
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = 'No tunnels configured';
+        workerSelect.appendChild(opt);
     }
 
     document.getElementById('uuidInput').value = generateUUID();
@@ -620,26 +640,49 @@ async function handleGenerateConfig() {
     const getSelectedPort = (groupClass) => document.querySelector(`.${groupClass}.bg-blue-600`)?.dataset.port;
     const getSelectedFormat = (groupClass) => document.querySelector(`.${groupClass}.bg-blue-600`)?.dataset.format;
 
-    const vpnType = getSelectedValue('vpn-type-btn');
+    const vpnTypeSelection = getSelectedValue('vpn-type-btn'); // trojan | vless | ss | any
     const port = getSelectedPort('port-btn');
     const format = getSelectedFormat('format-btn');
-    const workerDomain = document.getElementById('workerDomainSelect').value;
+    const workerSelection = document.getElementById('workerDomainSelect').value;
     const uuidField = document.getElementById('uuidInput').value;
-    const customBug = document.getElementById('customBugInput').value.trim();
+    const bugInputEl = document.getElementById('bugListInput');
+    const bugListRaw = bugInputEl ? bugInputEl.value : '';
+    const bugList = bugListRaw.split('\n').map(v => v.trim()).filter(Boolean);
     const bulkMode = isBulkGenerate;
 
-    if (!vpnType || !port || !format || !workerDomain) {
+    if (!vpnTypeSelection || !port || !format || !workerSelection) {
         return showToast('Please fill out all fields in the form.', 'warning');
     }
     if (!bulkMode && (!selectedProxy || !uuidField)) {
         return showToast('Please select a proxy and UUID/Password for single generation.', 'warning');
     }
 
-    const workerHost = workerDomain;
-    const bugHostBase = customBug || workerHost;
+    const tunnels = Array.isArray(window.tunnels) ? window.tunnels : [];
+    let workerCandidates;
+    if (workerSelection === 'any') {
+        workerCandidates = tunnels;
+    } else {
+        workerCandidates = tunnels.filter(t => t.domain === workerSelection);
+    }
+    if (workerCandidates.length === 0) {
+        return showToast('No worker tunnels available for this selection.', 'error');
+    }
+
+    const availableProtocols = vpnTypeSelection === 'any'
+        ? ['trojan', 'vless', 'ss']
+        : [vpnTypeSelection];
+
+    const pickProtocol = () =>
+        availableProtocols[Math.floor(Math.random() * availableProtocols.length)];
+
+    const pickWorkerHost = () => {
+        const idx = Math.floor(Math.random() * workerCandidates.length);
+        return workerCandidates[idx].domain;
+    };
+
     const security = 'tls';
 
-    const buildUriForProxy = (proxy, uuid, remark) => {
+    const buildUriForProxy = (proxy, protocol, uuid, workerHost, bugHost, remark) => {
         let ipPart = '';
         let portPart = '';
         if (proxy.proxyIP && proxy.proxyPort) {
@@ -652,14 +695,14 @@ async function handleGenerateConfig() {
         }
         const path = encodeURIComponent(`/${ipPart}-${portPart}`);
 
-        switch (vpnType) {
+        switch (protocol) {
             case 'trojan':
-                return `trojan://${uuid}@${bugHostBase}:${port}?path=${path}&security=${security}&host=${workerHost}&type=ws&sni=${workerHost}#${remark}`;
+                return `trojan://${uuid}@${bugHost}:${port}?path=${path}&security=${security}&host=${workerHost}&type=ws&sni=${workerHost}#${remark}`;
             case 'vless':
-                return `vless://${uuid}@${bugHostBase}:${port}?path=${path}&security=${security}&encryption=none&host=${workerHost}&type=ws&sni=${workerHost}#${remark}`;
+                return `vless://${uuid}@${bugHost}:${port}?path=${path}&security=${security}&encryption=none&host=${workerHost}&type=ws&sni=${workerHost}#${remark}`;
             case 'ss': {
                 const encodedPassword = btoa(`chacha20-ietf-poly1305:${uuid}`);
-                return `ss://${encodedPassword}@${bugHostBase}:${port}?plugin=v2ray-plugin;mode=websocket;path=${path};host=${workerHost};tls;sni=${workerHost}#${remark}`;
+                return `ss://${encodedPassword}@${bugHost}:${port}?plugin=v2ray-plugin;mode=websocket;path=${path};host=${workerHost};tls;sni=${workerHost}#${remark}`;
             }
             default:
                 throw new Error('Unsupported VPN type selected.');
@@ -678,9 +721,12 @@ async function handleGenerateConfig() {
             }
 
             uris = proxiesToUse.map((proxy, index) => {
+                const protocol = pickProtocol();
+                const workerHost = pickWorkerHost();
+                const bugHost = bugList.length ? bugList[Math.floor(Math.random() * bugList.length)] : workerHost;
                 const uuid = crypto.randomUUID();
-                const remark = encodeURIComponent(`${vpnType.toUpperCase()}-${proxy.country || 'XX'}-${index + 1}`);
-                return buildUriForProxy(proxy, uuid, remark);
+                const remark = encodeURIComponent(`${protocol.toUpperCase()}-${proxy.country || 'XX'}-${index + 1}`);
+                return buildUriForProxy(proxy, protocol, uuid, workerHost, bugHost, remark);
             });
 
             firstUri = uris[0];
@@ -714,8 +760,13 @@ async function handleGenerateConfig() {
                 resultString = payload.content || '';
             }
         } else {
-            const remark = encodeURIComponent(`${vpnType.toUpperCase()}-${selectedProxy.country || 'XX'}-1`);
-            const uri = buildUriForProxy(selectedProxy, uuidField, remark);
+            const protocol = pickProtocol();
+            const workerHost = workerSelection === 'any'
+                ? pickWorkerHost()
+                : (workerSelection || pickWorkerHost());
+            const bugHost = bugList.length ? bugList[Math.floor(Math.random() * bugList.length)] : workerHost;
+            const remark = encodeURIComponent(`${protocol.toUpperCase()}-${selectedProxy.country || 'XX'}-1`);
+            const uri = buildUriForProxy(selectedProxy, protocol, uuidField, workerHost, bugHost, remark);
             uris = [uri];
             firstUri = uri;
 
