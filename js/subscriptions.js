@@ -124,24 +124,40 @@ async function generateConfiguration() {
         let result = configurations.join('\n');
 
         if (outputFormat === 'clash' || outputFormat === 'singbox') {
-            // Use the FoolVPN converter API
-            const formatForApi = outputFormat === 'clash' ? 'clash' : 'sfa';
-            const response = await fetch(`${API_BASE_URL}/convert`, {
+            // Gunakan API converter eksternal (FoolVPN/test-api style)
+            // Path: /convert/:format, body: { url, template }
+            const formatForApi = outputFormat === 'clash' ? 'clash' : 'singbox';
+            const templateLevel = document.getElementById('templateLevelSelect')?.value || 'standard';
+
+            const apiUrl = `${API_BASE_URL}/convert/${formatForApi}`;
+            console.log('[Subscriptions] Calling converter:', apiUrl, 'template:', templateLevel);
+
+            const response = await fetch(apiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    url: configurations.join(','),
-                    format: formatForApi,
-                    template: 'cf',
-                }),
+                    // Sebagian besar converter menerima daftar link dipisah newline.
+                    url: configurations.join('\n'),
+                    template: templateLevel
+                })
             });
-            if (!response.ok) throw new Error(`API conversion failed: ${response.statusText}`);
+
+            if (!response.ok) {
+                let errorBody = '';
+                try {
+                    errorBody = await response.text();
+                } catch (_) {
+                    // ignore
+                }
+                console.error('[Subscriptions] Converter error body:', errorBody);
+                throw new Error(`API conversion failed (${response.status}): ${response.statusText}`);
+            }
 
             if (outputFormat === 'clash') {
-                // Clash config is returned as plain text (YAML)
+                // Clash config biasanya dikembalikan sebagai plain text (YAML)
                 result = await response.text();
             } else {
-                // Singbox (mapped to SFA) returns JSON
+                // Singbox biasanya dikembalikan sebagai JSON
                 const json = await response.json();
                 result = JSON.stringify(json, null, 2);
             }
