@@ -20,7 +20,9 @@ export default async function handler(request, response) {
     try {
         // Use the FoolVPN health check API for server-side batch checks
         const API_BASE_URL = 'https://id1.foolvpn.me/api/v1';
-        const subBatchSize = 10; // Process in smaller sub-batches to avoid overwhelming APIs
+        // Sesuai saran: dalam satu request (bisa sampai 500 proxy),
+        // kita proses 20 proxy per sub-batch agar tidak terlalu membanjiri API.
+        const subBatchSize = 20;
 
         for (let i = 0; i < proxiesToCheck.length; i += subBatchSize) {
             const subBatch = proxiesToCheck.slice(i, i + subBatchSize);

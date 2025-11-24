@@ -50,12 +50,14 @@ export default async function handler(request, response) {
         if (resetResult.error) throw resetResult.error;
         if (metaResult.error) throw metaResult.error;
 
-        // 3. Kick off all the small batch checks in the background (fire-and-forget).
-        // We do NOT await these fetches. This is the key to the async architecture.
-        const smallBatchSize = 25; // Small, reliable batch size
+        // 3. Kick off all the batch checks in the background (fire-and-forget).
+        //    Sesuai saran: 500 proxy per \"session\" (request) ke /api/check-batch.
+        //    Di dalam /api/check-batch nanti masih dibagi lagi menjadi sub-batch 20 proxy.
+        //    Kita tetap tidak menunggu (await) di sini agar tetap non-blocking.
+        const batchSize = 500;
         let batchesDispatched = 0;
-        for (let i = 0; i < allProxies.length; i += smallBatchSize) {
-            const batch = allProxies.slice(i, i + smallBatchSize);
+        for (let i = 0; i &lt; allProxies.length; i += batchSize) {
+            const batch = allProxies.slice(i, i + batchSize);
             // Construct the absolute URL for the API call
             const apiUrl = new URL('/api/check-batch', `http://${request.headers.host}`).toString();
 
@@ -63,10 +65,10 @@ export default async function handler(request, response) {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(batch)
-            }).catch(err => console.error(`Error dispatching batch ${i / smallBatchSize}:`, err));
+            }).catch(err =&gt; console.error(`Error dispatching batch ${i / batchSize}:`, err));
             batchesDispatched++;
         }
-        console.log(`Dispatched ${batchesDispatched} small batches to be processed in the background.`);
+        console.log(`Dispatched ${batchesDispatched} batches (up to 500 proxies each) to be processed in the background.`);
 
         // 4. Immediately return a 202 Accepted response.
         return response.status(202).json({
