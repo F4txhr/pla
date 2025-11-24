@@ -1,7 +1,52 @@
 import { supabase } from './_lib/supabaseClient.js';
 
-// Cloudflare/Worker monitor per user based on tunnels table and external test-api CF stats.
-// It aggregates tunnel status and, if cf_stats_id is present, fetches analytics from /statscf/data/:id.
+const BROWSER_USER_AGENT =
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36';
+
+function getZoneAnalyticsQuery(zoneId, since, until) {
+    return `
+    query {
+      viewer {
+        zones(filter: { zoneTag: "${zoneId}" }) {
+          httpRequestsAdaptiveGroups(
+            filter: { date_geq: "${since}", date_lt: "${until}" },
+            limit: 1
+          ) {
+            sum { requests, bytes }
+          }
+        }
+      }
+    }
+  `;
+}
+
+function getWorkerAnalyticsQuery(accountId, workerName, since, until) {
+    return `
+    query {
+      viewer {
+        accounts(filter: { accountTag: "${accountId}" }) {
+          workersInvocationsAdaptive(
+            filter: {
+              datetime_geq: "${since}T00:00:00Z",
+              datetime_lt: "${until}T00:00:00Z",
+              scriptName: "${workerName}"
+            },
+            limit: 1
+          ) {
+            sum { requests, subrequests, errors }
+            quantiles { cpuTimeP50, cpuTimeP90, cpuTimeP99 }
+          }
+        }
+      }
+    }
+  `;
+}
+
+// Cloudflare/Worker monitor per user based on tunnels table and direct CF GraphQL queries.
+// cf_stats_id format per tunnel:
+//   - "zone:ZONE_ID"   -> use zone analytics (requests + bytes)
+//   - "worker:NAME"    -> use worker analytics (requests + errors + CPU time)
+//   - "NAME"           -> treated as worker:NAME
 export default async function handler(request, response) {
     if (request.method !== 'GET') {
         response.setHeader('Allow', ['GET']);
@@ -30,35 +75,110 @@ export default async function handler(request, response) {
         const offline = data.filter(t => t.status === 'offline').length;
         const unknown = data.filter(t => !t.status || t.status === 'unknown').length;
 
-        const baseUrl =
-            process.env.CF_STATS_BASE_URL ||
-            process.env.TEST_API_BASE_URL ||
-            'https://api.foolvpn.me';
-
         const usageByTunnelId = {};
 
-        if (baseUrl && data.length) {
+        const cfToken = process.env.CF_API_TOKEN;
+        const cfAccountId = process.env.CF_ACCOUNT_ID;
+
+        const now = new Date();
+        const today = now.toISOString().slice(0, 10);
+        const tomorrow = new Date(now);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const tomorrowStr = tomorrow.toISOString().slice(0, 10);
+
+        if (cfToken) {
             const tunnelsWithCf = data.filter(t => t.cf_stats_id);
 
             await Promise.all(
                 tunnelsWithCf.map(async (tunnel) => {
-                    const cfId = tunnel.cf_stats_id;
-                    const url = `${baseUrl.replace(/\\/$/, '')}/statscf/data/${encodeURIComponent(cfId)}`;
+                    const rawId = tunnel.cf_stats_id || '';
+                    let type = 'worker';
+                    let zoneId = null;
+                    let workerName = null;
+
+                    if (rawId.startsWith('zone:')) {
+                        type = 'zone';
+                        zoneId = rawId.substring('zone:'.length).trim();
+                    } else if (rawId.startsWith('worker:')) {
+                        type = 'worker';
+                        workerName = rawId.substring('worker:'.length).trim();
+                    } else {
+                        type = 'worker';
+                        workerName = rawId.trim();
+                    }
+
+                    if (type === 'zone' && !zoneId) return;
+                    if (type === 'worker' && (!workerName || !cfAccountId)) return;
+
+                    let queryStr;
+                    if (type === 'zone') {
+                        queryStr = getZoneAnalyticsQuery(zoneId, today, tomorrowStr);
+                    } else {
+                        queryStr = getWorkerAnalyticsQuery(cfAccountId, workerName, today, tomorrowStr);
+                    }
+
                     try {
-                        const res = await fetch(url, { method: 'GET' });
+                        const res = await fetch('https://api.cloudflare.com/client/v4/graphql', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${cfToken}`,
+                                'User-Agent': BROWSER_USER_AGENT
+                            },
+                            body: JSON.stringify({ query: queryStr })
+                        });
+
                         if (!res.ok) {
-                            console.warn('[cf-usage] CF stats request failed for tunnel', tunnel.id, 'status', res.status);
+                            console.warn('[cf-usage] CF GraphQL request failed for tunnel', tunnel.id, 'status', res.status);
                             return;
                         }
-                        const payload = await res.json();
-                        if (payload && payload.success && payload.data) {
-                            usageByTunnelId[tunnel.id] = payload.data;
+
+                        const json = await res.json();
+                        if (json.errors) {
+                            console.warn('[cf-usage] CF GraphQL errors for tunnel', tunnel.id, json.errors);
+                            return;
+                        }
+
+                        if (type === 'zone') {
+                            const group =
+                                json?.data?.viewer?.zones?.[0]?.httpRequestsAdaptiveGroups?.[0] || {};
+                            const sum = group.sum || { requests: 0, bytes: 0 };
+                            usageByTunnelId[tunnel.id] = {
+                                type: 'zone',
+                                zone_id: zoneId,
+                                total_requests_today: sum.requests || 0,
+                                total_bandwidth_today_bytes: sum.bytes || 0
+                            };
+                        } else {
+                            const invocation =
+                                json?.data?.viewer?.accounts?.[0]?.workersInvocationsAdaptive?.[0] || {};
+                            const sum = invocation.sum || { requests: 0, subrequests: 0, errors: 0 };
+                            const quantiles = invocation.quantiles || {
+                                cpuTimeP50: null,
+                                cpuTimeP90: null,
+                                cpuTimeP99: null
+                            };
+                            usageByTunnelId[tunnel.id] = {
+                                type: 'worker',
+                                worker_name: workerName,
+                                total_requests_today: sum.requests || 0,
+                                total_subrequests_today: sum.subrequests || 0,
+                                total_errors_today: sum.errors || 0,
+                                cpu_time_p50: quantiles.cpuTimeP50,
+                                cpu_time_p90: quantiles.cpuTimeP90,
+                                cpu_time_p99: quantiles.cpuTimeP99,
+                                note: 'CPU time is in microseconds (µs).'
+                            };
                         }
                     } catch (err) {
                         console.error('[cf-usage] Error fetching CF stats for tunnel', tunnel.id, err.message);
                     }
                 })
             );
+        } else {
+            if (data.some(t => t.cf_stats_id)) {
+                console.warn('[cf-usage] CF_API_TOKEN not set. CF analytics will be unavailable.');
+            }
         }
 
         const tunnelsWithUsage = data.map((tunnel) => ({
