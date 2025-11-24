@@ -23,15 +23,21 @@ async function handleGet(request, response) {
         const pageSize = 1000; // Supabase's default limit
         let moreData = true;
 
-        while(moreData) {
+        console.log('[API /proxies] handleGet -> querying Supabase...');
+
+        while (moreData) {
             const { data, error } = await supabase
                 .from('proxies')
                 .select('id, proxy_data, status, latency, last_checked, country, org, created_at')
                 .range(page * pageSize, (page + 1) * pageSize - 1);
 
-            if (error) throw error;
+            if (error) {
+                console.error('[API /proxies] Supabase error in handleGet:', error);
+                throw error;
+            }
 
             if (data && data.length > 0) {
+                console.log(`[API /proxies] handleGet -> fetched page ${page}, rows: ${data.length}`);
                 allData = allData.concat(data);
                 page++;
             } else {
@@ -39,6 +45,7 @@ async function handleGet(request, response) {
             }
         }
 
+        console.log('[API /proxies] handleGet -> total rows returned:', allData.length);
         return response.status(200).json(allData);
     } catch (error) {
         console.error('Error fetching proxies:', error);
