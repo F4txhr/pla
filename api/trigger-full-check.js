@@ -17,10 +17,11 @@ export default async function handler(request, response) {
         let page = 0;
         const pageSize = 1000;
         let moreData = true;
-        while(moreData) {
+        while (moreData) {
             const { data, error } = await supabase
                 .from('proxies')
                 .select('id, proxy_data, country, org, offline_count')
+                .order('id', { ascending: true })
                 .range(page * pageSize, (page + 1) * pageSize - 1);
 
             if (error) throw error;
@@ -31,17 +32,18 @@ export default async function handler(request, response) {
                 moreData = false;
             }
         }
-        console.log(`Found ${allProxies.length} total proxies.`);
+        console.log(`Found ${allProxies.length} total proxies (ordered by id ascending).`);
 
         if (allProxies.length === 0) {
             return response.status(200).json({ message: 'No proxies to check.' });
         }
 
-        // 2. Reset all proxies to 'testing' and update the timestamp in one go.
+        // 2. Reset all proxies to 'testing' and clear last_checked in one go.
+        //    Dengan begitu, di UI bisa terlihat jelas mana yang masih dalam proses pengecekan.
         console.log('Resetting all proxies to "testing"...');
         const proxyIds = allProxies.map(p => p.id);
         const [resetResult, metaResult] = await Promise.all([
-            supabase.from('proxies').update({ status: 'testing', latency: 0 }).in('id', proxyIds),
+            supabase.from('proxies').update({ status: 'testing', latency: 0, last_checked: null }).in('id', proxyIds),
             supabase.from('metadata').upsert({ key: 'last_updated_timestamp', value: new Date().toISOString() })
         ]);
 
