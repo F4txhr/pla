@@ -124,43 +124,34 @@ async function generateConfiguration() {
         let result = configurations.join('\n');
 
         if (outputFormat === 'clash' || outputFormat === 'singbox') {
-            // Gunakan API converter eksternal (FoolVPN/test-api style)
-            // Path: /convert/:format, body: { url, template }
-            const formatForApi = outputFormat === 'clash' ? 'clash' : 'singbox';
+            // Gunakan converter built-in di backend dashboard: /api/convert
             const templateLevel = document.getElementById('templateLevelSelect')?.value || 'standard';
 
-            const apiUrl = `${API_BASE_URL}/convert/${formatForApi}`;
-            console.log('[Subscriptions] Calling converter:', apiUrl, 'template:', templateLevel);
+            console.log('[Subscriptions] Calling local converter: /api/convert', 'format:', outputFormat, 'template:', templateLevel);
 
-            const response = await fetch(apiUrl, {
+            const response = await fetch('/api/convert', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    // Sebagian besar converter menerima daftar link dipisah newline.
-                    url: configurations.join('\n'),
-                    template: templateLevel
+                    links: configurations,
+                    format: outputFormat,
+                    level: templateLevel
                 })
             });
 
             if (!response.ok) {
-                let errorBody = '';
+                let errorData = null;
                 try {
-                    errorBody = await response.text();
+                    errorData = await response.json();
                 } catch (_) {
                     // ignore
                 }
-                console.error('[Subscriptions] Converter error body:', errorBody);
-                throw new Error(`API conversion failed (${response.status}): ${response.statusText}`);
+                console.error('[Subscriptions] Converter error:', errorData || response.statusText);
+                throw new Error(errorData?.error || errorData?.details || `API conversion failed (${response.status}): ${response.statusText}`);
             }
 
-            if (outputFormat === 'clash') {
-                // Clash config biasanya dikembalikan sebagai plain text (YAML)
-                result = await response.text();
-            } else {
-                // Singbox biasanya dikembalikan sebagai JSON
-                const json = await response.json();
-                result = JSON.stringify(json, null, 2);
-            }
+            const payload = await response.json();
+            result = payload.content || '';
         } else if (outputFormat === 'qrcode') {
             result = configurations[0];
         }
