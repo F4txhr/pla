@@ -276,143 +276,43 @@ async function loadProxiesFromApi() {
     }
 }
 
-// This function now performs health checks on the client-side and patches the results to the backend.
-// Untuk mengurangi error (false offline) karena terlalu banyak request paralel,
-// Refresh sekarang hanya mengetes proxy yang MUNCUL di halaman saat ini (current page),
-// bukan semua filteredProxies sekaligus.
+// This function now triggers a full backend health check for all proxies.
+// Backend (trigger-full-check + check-batch) akan memanggil FoolVPN health API secara bertahap,
+// jadi aksi UI seperti refresh halaman / pindah halaman tidak akan mengganggu proses pengecekan.
 async function checkProxies() {
     const refreshBtn = document.getElementById('refreshBtn');
     if (refreshBtn && refreshBtn.disabled) return;
 
-    const currentPageProxies = getCurrentPageProxies();
-    console.log('[UI] checkProxies -> start, currentPageProxies:', currentPageProxies.length);
-
-    if (currentPageProxies.length === 0) {
-        showToast('No proxies to test on this page.', 'info');
-        return;
-    }
-
-    refreshBtn.disabled = true;
-    refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Testing...';
-    showToast(`Testing ${currentPageProxies.length} proxies on this page...`, 'info');
-
-    // Set UI to 'testing' state untuk proxy di halaman sekarang saja
-    for (const proxy of currentPageProxies) {
-        proxy.status = 'testing';
-    }
-    renderProxies(); // Re-render to show 'testing' status
-
-    const checkPromises = currentPageProxies.map(async (proxy) => {
-        try {
-            // Use the external FoolVPN health check API (GET with query parameter)
-            const healthUrl = `${PROXY_HEALTH_API_BASE}/check?ip=${encodeURIComponent(proxy.proxy_data)}`;
-            console.log('[UI] checkProxies -> calling health API:', healthUrl);
-
-            // Tambahkan timeout 10 detik supaya kita benar-benar menunggu respons yang lama.
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-            const response = await fetch(healthUrl, { signal: controller.signal });
-            clearTimeout(timeoutId);
-
-            const result = await response.json();
-
-            const isUp = response.ok && result.proxyip === true;
-            const prevOffline = proxy.offline_count || 0;
-            const newOfflineCount = isUp ? 0 : prevOffline + 1;
-
-            return {
-                id: proxy.id,
-                proxy_data: proxy.proxy_data,
-                status: isUp ? 'online' : 'offline',
-                latency: typeof result.delay === 'number' ? result.delay : 0,
-                last_checked: new Date().toISOString(),
-                country: proxy.country,
-                org: proxy.org,
-                offline_count: newOfflineCount
-            };
-        } catch (error) {
-            console.error(`Error checking proxy ${proxy.proxy_data}:`, error);
-            const prevOffline = proxy.offline_count || 0;
-            const newOfflineCount = prevOffline + 1;
-
-            // If the check fails, mark the proxy as offline
-            return {
-                id: proxy.id,
-                proxy_data: proxy.proxy_data,
-                status: 'offline',
-                latency: 0,
-                last_checked: new Date().toISOString(),
-                country: proxy.country,
-                org: proxy.org,
-                offline_count: newOfflineCount
-            };
-        }
-    });
-
-    // Wait for all checks to complete
-    const updatedProxies = await Promise.all(checkPromises);
-
-    console.log('[UI] checkProxies -> updates to send (current page):', updatedProxies.length);
-
-    // Separate proxies to update vs delete (>=3 consecutive offline)
-    const toDeleteIds = updatedProxies
-        .filter(p => p.status === 'offline' && (p.offline_count || 0) >= 3)
-        .map(p => p.id);
-
-    const toUpdate = updatedProxies.filter(p => !toDeleteIds.includes(p.id));
-
     try {
-        // Send all results back to the server in a single bulk update (for those not deleted)
-        if (toUpdate.length > 0) {
-            const response = await fetch('/api/proxies', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(toUpdate)
-            });
+        if (refreshBtn) {
+            refreshBtn.disabled = true;
+            refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Starting check...';
+        }
+        showToast('Starting full proxy health check in the background. This may take a few minutes.', 'info');
 
-            console.log('[UI] checkProxies -> PATCH /api/proxies status:', response.status);
+        const resp = await fetch('/api/trigger-full-check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                console.error('[UI] checkProxies -> PATCH error body:', errorData);
-                throw new Error(errorData.details || 'Failed to save proxy statuses.');
-            }
+        console.log('[UI] checkProxies -> POST /api/trigger-full-check status:', resp.status);
+
+        if (resp.status !== 202 && resp.status !== 200) {
+            const errorData = await resp.json().catch(() => ({}));
+            console.error('[UI] checkProxies -> trigger error body:', errorData);
+            throw new Error(errorData.details || `Failed to trigger full check (status ${resp.status}).`);
         }
 
-        // Delete proxies that have been offline 3 times in a row
-        if (toDeleteIds.length > 0) {
-            console.log('[UI] checkProxies -> deleting proxies with 3x offline:', toDeleteIds.length);
-            const deleteResponse = await fetch('/api/proxies', {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ids: toDeleteIds })
-            });
-
-            if (!deleteResponse.ok) {
-                const errorData = await deleteResponse.json().catch(() => ({}));
-                console.error('[UI] checkProxies -> DELETE error body:', errorData);
-            }
-        }
-
-        const onlineCount = updatedProxies.filter(p => p.status === 'online').length;
-        const offlineCount = updatedProxies.length - onlineCount;
-
-        showToast(
-            `Proxy checks complete (this page). Tested ${updatedProxies.length} proxies: ${onlineCount} online, ${offlineCount} offline. ` +
-            (toDeleteIds.length > 0 ? `Removed ${toDeleteIds.length} dead proxies.` : ''),
-            'success'
-        );
-
-        // Reload all data from the source of truth to ensure consistency
+        // Setelah trigger, semua proxy di DB diset ke status 'testing'.
+        // Kita reload data sekali supaya UI langsung menunjukkan status terbaru.
         allProxies = await loadProxiesFromApi();
         applyFiltersAndRender();
 
+        showToast('Full proxy health check started. You can navigate pages; results will update as checks complete.', 'success');
     } catch (error) {
-        console.error('Error saving proxy statuses:', error);
+        console.error('Error triggering full proxy check:', error);
         showToast(`Error: ${error.message}`, 'error');
     } finally {
-        // Always re-enable the button
         if (refreshBtn) {
             refreshBtn.disabled = false;
             refreshBtn.innerHTML = '<i class="fas fa-sync-alt mr-2"></i> Refresh';
