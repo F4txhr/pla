@@ -503,7 +503,7 @@ function handleButtonGroup(selectedBtn, groupClass) {
     selectedBtn.classList.remove('border-gray-300');
 }
 
-function handleGenerateConfig() {
+async function handleGenerateConfig() {
     const getSelectedValue = (groupClass) => document.querySelector(`.${groupClass}.bg-blue-600`)?.dataset.type;
     const getSelectedPort = (groupClass) => document.querySelector(`.${groupClass}.bg-blue-600`)?.dataset.port;
     const getSelectedFormat = (groupClass) => document.querySelector(`.${groupClass}.bg-blue-600`)?.dataset.format;
@@ -518,30 +518,85 @@ function handleGenerateConfig() {
         return showToast('Please fill out all fields in the form.', 'warning');
     }
 
-    // Basic URI generation (more complex formats would need dedicated libraries)
-    const remark = encodeURIComponent(`${selectedProxy.country} - ${selectedProxy.org}`);
-    let resultString = ``;
+    // Bangun URI VPN dengan pola yang sama seperti subscription generator
+    const host = workerDomain;
+    const security = 'tls';
 
-    switch(vpnType) {
-        case 'vless':
-            resultString = `vless://${uuid}@${workerDomain}:${port}?path=%2F%3Fed%3D2048&security=tls&encryption=none&host=${workerDomain}&type=ws&sni=${workerDomain}#${remark}`;
-            break;
+    // Ambil IP dan port backend dari selectedProxy (proxy_data: IP:Port)
+    let ipPart = '';
+    let portPart = '';
+    if (selectedProxy.proxyIP && selectedProxy.proxyPort) {
+        ipPart = selectedProxy.proxyIP;
+        portPart = selectedProxy.proxyPort;
+    } else if (selectedProxy.proxy_data) {
+        const [ip, prt] = selectedProxy.proxy_data.split(':');
+        ipPart = ip || '';
+        portPart = prt || '443';
+    }
+    const path = encodeURIComponent(`/${ipPart}-${portPart}`);
+
+    const remark = encodeURIComponent(`${vpnType.toUpperCase()}-${selectedProxy.country || 'XX'}-1`);
+    let uri = '';
+
+    switch (vpnType) {
         case 'trojan':
-            resultString = `trojan://${uuid}@${workerDomain}:${port}?security=tls&sni=${workerDomain}&type=ws&host=${workerDomain}&path=/#${remark}`;
+            uri = `trojan://${uuid}@${host}:${port}?path=${path}&security=${security}&host=${host}&type=ws&sni=${host}#${remark}`;
             break;
-        case 'ss':
-             // Example for Shadowsocks, might need adjustment
-            const ssPass = `${uuid}@${workerDomain}:${port}`;
-            const encoded = btoa(ssPass);
-            resultString = `ss://${encoded}#${remark}`;
+        case 'vless':
+            uri = `vless://${uuid}@${host}:${port}?path=${path}&security=${security}&encryption=none&host=${host}&type=ws&sni=${host}#${remark}`;
             break;
+        case 'ss': {
+            // Sama seperti di subscription generator: method chacha20-ietf-poly1305 + v2ray-plugin WS
+            const encodedPassword = btoa(`chacha20-ietf-poly1305:${uuid}`);
+            uri = `ss://${encodedPassword}@${host}:${port}?plugin=v2ray-plugin;mode=websocket;path=${path};host=${host};tls;sni=${host}#${remark}`;
+            break;
+        }
+        default:
+            return showToast('Unsupported VPN type selected.', 'error');
+    }
+
+    let resultString = uri;
+
+    // Jika format Clash atau Singbox, gunakan converter built-in backend (/api/convert)
+    if (format === 'clash' || format === 'singbox') {
+        try {
+            const level = 'standard'; // default template level untuk per-proxy
+            const response = await fetch('/api/convert', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    links: [uri],
+                    format,
+                    level
+                })
+            });
+
+            if (!response.ok) {
+                let errorData = null;
+                try {
+                    errorData = await response.json();
+                } catch (_) {
+                    // ignore
+                }
+                console.error('[Proxy] Converter error:', errorData || response.statusText);
+                throw new Error(errorData?.error || errorData?.details || `API conversion failed (${response.status}): ${response.statusText}`);
+            }
+
+            const payload = await response.json();
+            resultString = payload.content || '';
+        } catch (err) {
+            console.error('[Proxy] Error while converting config:', err);
+            showToast(`Converter error: ${err.message}`, 'error');
+            return;
+        }
     }
 
     const resultContent = document.getElementById('resultContent');
     const resultModal = document.getElementById('resultModal');
 
     if (format === 'qrcode') {
-        resultContent.innerHTML = `<p class="text-center text-red-500">QR Code generation is not yet implemented. Please select another format.</p>`;
+        const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(uri)}`;
+        resultContent.innerHTML = `<div class="text-center"><img src="${qrCodeUrl}" alt="QR Code" class="mx-auto mb-4"></div>`;
     } else {
         resultContent.innerHTML = `<pre class="bg-gray-100 p-4 rounded-md text-sm break-all whitespace-pre-wrap">${resultString}</pre>`;
     }
