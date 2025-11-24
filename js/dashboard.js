@@ -4,6 +4,12 @@
 
 document.addEventListener('DOMContentLoaded', () => {
     initializeDashboard();
+    const refreshCfBtn = document.getElementById('refreshCfUsageBtn');
+    if (refreshCfBtn) {
+        refreshCfBtn.addEventListener('click', fetchCfUsage);
+    }
+    // Initial CF usage load
+    fetchCfUsage();
 });
 
 /**
@@ -45,7 +51,10 @@ async function updateDashboardStats() {
 
     } catch (error) {
         console.error('Failed to update dashboard stats:', error);
-        document.getElementById('lastUpdated').textContent = 'Error';
+        const lastUpdatedEl = document.getElementById('lastUpdated');
+        if (lastUpdatedEl) {
+            lastUpdatedEl.textContent = 'Error';
+        }
     }
 }
 
@@ -128,4 +137,57 @@ function animateValue(elementId, endValue) {
     }
 
     requestAnimationFrame(update);
+}
+
+/**
+ * Fetches simple CF/Worker usage per user based on tunnels table.
+ */
+async function fetchCfUsage() {
+    try {
+        const headers = {};
+        if (window.userKey) {
+            headers['x-user-key'] = window.userKey;
+        }
+        const res = await fetch('/api/cf-usage', { headers });
+        if (!res.ok) {
+            throw new Error(`CF usage API responded with ${res.status}`);
+        }
+        const data = await res.json();
+
+        const onlineEl = document.getElementById('cfOnlineCount');
+        const offlineEl = document.getElementById('cfOfflineCount');
+        const unknownEl = document.getElementById('cfUnknownCount');
+        const listEl = document.getElementById('cfTunnelList');
+
+        if (!onlineEl || !offlineEl || !unknownEl || !listEl) return;
+
+        onlineEl.textContent = data.totals.online;
+        offlineEl.textContent = data.totals.offline;
+        unknownEl.textContent = data.totals.unknown;
+
+        if (!data.tunnels.length) {
+            listEl.innerHTML = '<p class="text-sm text-gray-500">No tunnels configured for this user.</p>';
+            return;
+        }
+
+        listEl.innerHTML = data.tunnels.map((tunnel) => {
+            let statusColor = 'text-yellow-600 bg-yellow-50';
+            if (tunnel.status === 'online') statusColor = 'text-green-600 bg-green-50';
+            if (tunnel.status === 'offline') statusColor = 'text-red-600 bg-red-50';
+
+            return `
+                <div class="py-2 flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-800">${tunnel.name}</p>
+                        <p class="text-xs text-gray-500">${tunnel.domain}</p>
+                    </div>
+                    <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusColor}">
+                        ${tunnel.status || 'unknown'}
+                    </span>
+                </div>
+            `;
+        }).join('');
+    } catch (err) {
+        console.error('[Dashboard] Failed to fetch CF usage:', err);
+    }
 }

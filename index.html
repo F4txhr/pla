@@ -182,20 +182,53 @@
             </div>
         </div>
         
-        <!-- Recent Activity -->
-        <div class="bg-white rounded-lg shadow-sm p-6">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-semibold text-gray-900">Recent Activity</h2>
-                <button class="text-sm text-blue-600 hover:text-blue-800">View All</button>
+        <!-- Recent Activity + CF Monitor -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Recent Activity -->
+            <div class="bg-white rounded-lg shadow-sm p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-semibold text-gray-900">Recent Activity</h2>
+                    <button class="text-sm text-blue-600 hover:text-blue-800">View All</button>
+                </div>
+                
+                <div id="recentActivity" class="space-y-4">
+                    <!-- Activity items will be inserted here -->
+                </div>
+                
+                <div id="noActivity" class="text-center py-8">
+                    <i class="fas fa-inbox text-gray-300 text-4xl mb-3"></i>
+                    <p class="text-gray-500">No recent activity</p>
+                </div>
             </div>
-            
-            <div id="recentActivity" class="space-y-4">
-                <!-- Activity items will be inserted here -->
-            </div>
-            
-            <div id="noActivity" class="text-center py-8">
-                <i class="fas fa-inbox text-gray-300 text-4xl mb-3"></i>
-                <p class="text-gray-500">No recent activity</p>
+
+            <!-- CF / Worker Monitor -->
+            <div class="bg-white rounded-lg shadow-sm p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-semibold text-gray-900">Cloudflare Worker Monitor</h2>
+                    <button id="refreshCfUsageBtn" class="text-sm text-blue-600 hover:text-blue-800">
+                        <i class="fas fa-sync-alt mr-1"></i>Refresh
+                    </button>
+                </div>
+                <p class="text-sm text-gray-500 mb-3">
+                    Shows the status of your Worker tunnels (per logged-in user).
+                </p>
+                <div class="flex items-center space-x-4 mb-4 text-sm">
+                    <span class="inline-flex items-center px-2 py-1 rounded-full bg-green-50 text-green-700">
+                        <span class="w-2 h-2 rounded-full bg-green-500 mr-1"></span>
+                        <span id="cfOnlineCount">0</span> online
+                    </span>
+                    <span class="inline-flex items-center px-2 py-1 rounded-full bg-red-50 text-red-700">
+                        <span class="w-2 h-2 rounded-full bg-red-500 mr-1"></span>
+                        <span id="cfOfflineCount">0</span> offline
+                    </span>
+                    <span class="inline-flex items-center px-2 py-1 rounded-full bg-yellow-50 text-yellow-700">
+                        <span class="w-2 h-2 rounded-full bg-yellow-500 mr-1"></span>
+                        <span id="cfUnknownCount">0</span> unknown
+                    </span>
+                </div>
+                <div id="cfTunnelList" class="divide-y divide-gray-200 max-h-64 overflow-y-auto text-sm">
+                    <!-- Per-tunnel status inserted here -->
+                </div>
             </div>
         </div>
     </main>
