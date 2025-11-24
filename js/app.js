@@ -3,6 +3,23 @@
 // =================================================================================
 
 document.addEventListener('DOMContentLoaded', () => {
+    const path = window.location.pathname || '';
+    const isLoginPage = path.endsWith('login.html');
+
+    // Simple \"login\": require a local user key for all pages except the login page.
+    if (!isLoginPage) {
+        const storedUserKey = typeof localStorage !== 'undefined'
+            ? localStorage.getItem('vpnManager_userKey')
+            : null;
+
+        if (!storedUserKey) {
+            window.location.href = 'login.html';
+            return;
+        }
+
+        window.userKey = storedUserKey;
+    }
+
     setupCommonEventListeners();
 
     // The tunnel management UI only exists on some pages.
@@ -77,7 +94,11 @@ let editingTunnelId = null;
 
 async function loadTunnelsFromApi() {
     try {
-        const response = await fetch('/api/tunnels');
+        const headers = {};
+        if (window.userKey) {
+            headers['x-user-key'] = window.userKey;
+        }
+        const response = await fetch('/api/tunnels', { headers });
         if (!response.ok) throw new Error('Failed to fetch tunnels from API');
         // Assign to both the local and global variable to ensure all scripts can access it.
         window.tunnels = tunnels = await response.json();
@@ -158,9 +179,14 @@ async function saveTunnel(e) {
     const body = editingTunnelId ? { id: editingTunnelId, name, domain } : { name, domain };
 
     try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (window.userKey) {
+            headers['x-user-key'] = window.userKey;
+        }
+
         const response = await fetch('/api/tunnels', {
             method,
-            headers: { 'Content-Type': 'application/json' },
+            headers,
             body: JSON.stringify(body)
         });
 
@@ -204,9 +230,14 @@ function confirmDeleteTunnel(tunnelId) {
 
 async function deleteTunnel(tunnelId) {
     try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (window.userKey) {
+            headers['x-user-key'] = window.userKey;
+        }
+
         const response = await fetch('/api/tunnels', {
             method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
+            headers,
             body: JSON.stringify({ id: tunnelId })
         });
         if (!response.ok) {
@@ -242,9 +273,14 @@ async function checkSingleTunnelStatus(tunnel, shouldRender = true) {
 
     if (tunnel.status !== newStatus) {
         try {
+            const headers = { 'Content-Type': 'application/json' };
+            if (window.userKey) {
+                headers['x-user-key'] = window.userKey;
+            }
+
             const response = await fetch('/api/tunnels', {
                 method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
+                headers,
                 body: JSON.stringify({ id: tunnel.id, status: newStatus })
             });
 
