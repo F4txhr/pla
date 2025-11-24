@@ -103,12 +103,52 @@ async function handlePatch(request, response) {
             return response.status(400).json({ error: 'Request body must be a non-empty array of proxy update objects.' });
         }
 
-        // Use 'upsert' for batch updates. This is efficient.
-        const { data, error } = await supabase
-            .from('proxies')
-            .upsert(updates, { onConflict: 'id' });
+        console.log('[API /proxies] handlePatch -> received updates:', updates.length);
 
-        if (error) throw error;
+        // Jika semua objek update sudah membawa proxy_data (dan field lain lengkap),
+        // kita bisa menggunakan upsert batch seperti semula (efisien).
+        const allHaveProxyData = updates.every(u => typeof u.proxy_data === 'string' && u.proxy_data.length > 0);
+
+        if (allHaveProxyData) {
+            console.log('[API /proxies] handlePatch -> using batch upsert (with proxy_data).');
+            const { error } = await supabase
+                .from('proxies')
+                .upsert(updates, { onConflict: 'id' });
+
+            if (error) {
+                console.error('[API /proxies] Supabase error in handlePatch (upsert):', error);
+                throw error;
+            }
+        } else {
+            // Jika ada objek yang tidak punya proxy_data, berarti kita hanya ingin
+            // memperbarui status/latency/last_checked untuk baris yang sudah ada.
+            // Untuk menghindari insert row baru tanpa proxy_data (NOT NULL), kita
+            // update per-row berdasarkan id.
+            console.log('[API /proxies] handlePatch -> using per-row update (no proxy_data in some updates).');
+
+            for (const u of updates) {
+                if (!u.id) {
+                    console.warn('[API /proxies] handlePatch -> skipping update without id:', u);
+                    continue;
+                }
+
+                const patch = {
+                    status: u.status,
+                    latency: u.latency,
+                    last_checked: u.last_checked
+                };
+
+                const { error } = await supabase
+                    .from('proxies')
+                    .update(patch)
+                    .eq('id', u.id);
+
+                if (error) {
+                    console.error('[API /proxies] Supabase error in handlePatch (update per-row):', error, 'for id:', u.id);
+                    // Lanjut ke row berikutnya, tapi tetap log error.
+                }
+            }
+        }
 
         return response.status(200).json({ success: true, message: `${updates.length} proxies updated successfully.` });
     } catch (error) {
