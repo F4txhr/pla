@@ -12,7 +12,8 @@ function getZoneAnalyticsQuery(zoneId, since, until) {
             filter: { date_geq: "${since}", date_lt: "${until}" },
             limit: 1
           ) {
-            sum { requests, bytes }
+            count
+            sum { edgeResponseBytes }
           }
         }
       }

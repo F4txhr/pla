@@ -12,7 +12,8 @@ function getZoneAnalyticsQuery(zoneId, since, until) {
             filter: { date_geq: "${since}", date_lt: "${until}" },
             limit: 1
           ) {
-            sum { requests, bytes }
+            count
+            sum { edgeResponseBytes }
           }
         }
       }
@@ -157,12 +158,13 @@ export default async function handler(request, response) {
                         if (type === 'zone') {
                             const group =
                                 json?.data?.viewer?.zones?.[0]?.httpRequestsAdaptiveGroups?.[0] || {};
-                            const sum = group.sum || { requests: 0, bytes: 0 };
+                            const count = group.count || 0;
+                            const sum = group.sum || { edgeResponseBytes: 0 };
                             usageByTunnelId[tunnel.id] = {
                                 type: 'zone',
                                 zone_id: zoneId,
-                                total_requests_today: sum.requests || 0,
-                                total_bandwidth_today_bytes: sum.bytes || 0
+                                total_requests_today: count,
+                                total_bandwidth_today_bytes: sum.edgeResponseBytes || 0
                             };
                         } else {
                             const invocation =
