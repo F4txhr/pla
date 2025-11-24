@@ -77,8 +77,23 @@ export default async function handler(request, response) {
 
         const usageByTunnelId = {};
 
-        const cfToken = process.env.CF_API_TOKEN;
-        const cfAccountId = process.env.CF_ACCOUNT_ID;
+        // Load per-user CF config (token + account id)
+        let cfToken = null;
+        let cfAccountId = null;
+        if (userKey) {
+            const { data: cfg, error: cfgError } = await supabase
+                .from('cf_configs')
+                .select('cf_api_token, cf_account_id')
+                .eq('user_key', userKey)
+                .single();
+
+            if (cfgError && cfgError.code !== 'PGRST116') {
+                console.error('[cf-usage] Failed to load cf_configs for user:', userKey, cfgError.message);
+            } else if (cfg) {
+                cfToken = cfg.cf_api_token;
+                cfAccountId = cfg.cf_account_id || null;
+            }
+        }
 
         const now = new Date();
         const today = now.toISOString().slice(0, 10);
@@ -177,7 +192,7 @@ export default async function handler(request, response) {
             );
         } else {
             if (data.some(t => t.cf_stats_id)) {
-                console.warn('[cf-usage] CF_API_TOKEN not set. CF analytics will be unavailable.');
+                console.warn('[cf-usage] No CF config for user', userKey, '- CF analytics will be unavailable.');
             }
         }
 

@@ -4,10 +4,18 @@
 
 document.addEventListener('DOMContentLoaded', () => {
     initializeDashboard();
+
     const refreshCfBtn = document.getElementById('refreshCfUsageBtn');
     if (refreshCfBtn) {
         refreshCfBtn.addEventListener('click', fetchCfUsage);
     }
+
+    const cfForm = document.getElementById('cfConfigForm');
+    if (cfForm) {
+        cfForm.addEventListener('submit', saveCfConfig);
+        loadCfConfig();
+    }
+
     // Initial CF usage load
     fetchCfUsage();
 });
@@ -140,7 +148,90 @@ function animateValue(elementId, endValue) {
 }
 
 /**
- * Fetches simple CF/Worker usage per user based on tunnels table.
+ * Loads per-user Cloudflare config metadata (without exposing token).
+ */
+async function loadCfConfig() {
+    try {
+        const statusEl = document.getElementById('cfConfigStatus');
+        const accountInput = document.getElementById('cfAccountIdInput');
+        if (!statusEl) return;
+
+        const headers = {};
+        if (window.userKey) {
+            headers['x-user-key'] = window.userKey;
+        }
+        const res = await fetch('/api/cf-config', { headers });
+        if (!res.ok) {
+            throw new Error(`CF config API responded with ${res.status}`);
+        }
+        const data = await res.json();
+
+        if (data.cf_account_id && accountInput) {
+            accountInput.value = data.cf_account_id;
+        }
+
+        if (data.hasToken) {
+            statusEl.textContent = `CF config registered for user "${data.user_key}".`;
+        } else {
+            statusEl.textContent = 'No CF config saved yet for this user.';
+        }
+    } catch (err) {
+        console.error('[Dashboard] Failed to load CF config:', err);
+    }
+}
+
+/**
+ * Saves per-user Cloudflare config (token + account id).
+ */
+async function saveCfConfig(e) {
+    e.preventDefault();
+    try {
+        const accountInput = document.getElementById('cfAccountIdInput');
+        const tokenInput = document.getElementById('cfApiTokenInput');
+        const statusEl = document.getElementById('cfConfigStatus');
+
+        const cf_account_id = accountInput ? accountInput.value.trim() : '';
+        const cf_api_token = tokenInput ? tokenInput.value.trim() : '';
+
+        if (!cf_api_token) {
+            alert('Please enter a Cloudflare API token.');
+            return;
+        }
+
+        const headers = { 'Content-Type': 'application/json' };
+        if (window.userKey) {
+            headers['x-user-key'] = window.userKey;
+        }
+
+        const res = await fetch('/api/cf-config', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ cf_api_token, cf_account_id })
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+            throw new Error(data.error || data.details || 'Failed to save CF config.');
+        }
+
+        if (statusEl) {
+            statusEl.textContent = `CF config saved for user "${data.user_key}".`;
+        }
+        // Clear token field after save for safety
+        if (tokenInput) {
+            tokenInput.value = '';
+        }
+
+        // Refresh usage with new config
+        fetchCfUsage();
+    } catch (err) {
+        console.error('[Dashboard] Failed to save CF config:', err);
+        alert(`Failed to save CF config: ${err.message}`);
+    }
+}
+
+/**
+ * Fetches CF/Worker usage per user based on tunnels table and per-user CF config.
  */
 async function fetchCfUsage() {
     try {
@@ -185,7 +276,6 @@ async function fetchCfUsage() {
                 } else if (tunnel.usage.type === 'worker') {
                     const req = tunnel.usage.total_requests_today ?? 0;
                     const errCount = tunnel.usage.total_errors_today ?? 0;
-                    // CPU time is in microseconds; convert p90 to ms if present
                     const cpuP90us = tunnel.usage.cpu_time_p90;
                     const cpuP90ms = cpuP90us != null ? (cpuP90us / 1000).toFixed(2) : null;
                     const cpuPart = cpuP90ms != null ? `, CPU p90: ${cpuP90ms} ms` : '';
