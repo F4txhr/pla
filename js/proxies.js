@@ -9,6 +9,13 @@ let currentPage = 1;
 let pageSize = 12;
 let selectedProxy = null;
 
+// Multi-selection state
+let selectedProxyIds = new Set();
+let isBulkGenerate = false;
+
+const SELECTION_STORAGE_KEY = 'vpnManager_selectedProxyIds';
+const SELECTION_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
 // --- DOMContentLoaded Listener ---
 document.addEventListener('DOMContentLoaded', () => {
     if (document.getElementById('proxyContainer')) {
@@ -26,9 +33,13 @@ async function initializeProxyPage() {
 
     allProxies = await loadProxiesFromApi();
 
+    // Restore multi-selection state from previous session (if not expired)
+    restoreSelectionFromStorage();
+
     populateCountryFilter();
     setupProxyEventListeners();
     applyFiltersAndRender();
+    updateBulkActionsVisibility();
 
     loadingIndicator.classList.add('hidden');
     if (allProxies.length > 0) {
@@ -54,6 +65,10 @@ function setupProxyEventListeners() {
     addListener('emptyStateImportBtn', 'click', () => document.getElementById('importModal').classList.remove('hidden'));
     addListener('cancelImportBtn', 'click', () => document.getElementById('importModal').classList.add('hidden'));
     addListener('confirmImportBtn', 'click', importProxies);
+
+    // Bulk generate/reset selection
+    addListener('bulkGenerateBtn', 'click', openBulkGenerateModal);
+    addListener('bulkResetBtn', 'click', resetSelection);
 
     // Restore search functionality
     addListener('searchInput', 'input', applyFiltersAndRender);
@@ -143,6 +158,9 @@ function renderProxies() {
     document.getElementById('showingTo').textContent = startIndex + paginatedProxies.length;
 
     proxyContainer.innerHTML = paginatedProxies.map(createProxyCardHTML).join('');
+
+    // Pastikan tombol bulk actions mengikuti state seleksi
+    updateBulkActionsVisibility();
 }
 
 // Helper: get proxies shown on the current page
@@ -158,16 +176,16 @@ function createProxyCardHTML(proxy) {
 
     if (displayStatus === 'testing') {
         latencyClass = 'text-blue-500';
-        latencyText = '<i class="fas fa-spinner fa-spin mr-1"></i> Testing...';
+        latencyText = '&lt;i class="fas fa-spinner fa-spin mr-1"&gt;&lt;/i&gt; Testing...';
     } else if (displayStatus === 'offline') {
         latencyClass = 'text-red-500';
         latencyText = 'Offline';
     } else if (displayStatus === 'unknown') {
         latencyClass = 'text-yellow-500';
         latencyText = 'Unknown';
-    } else if (proxy.latency < 150) {
+    } else if (proxy.latency &lt; 150) {
         latencyClass = 'latency-low';
-    } else if (proxy.latency < 500) {
+    } else if (proxy.latency &lt; 500) {
         latencyClass = 'latency-medium';
     } else {
         latencyClass = 'latency-high';
@@ -178,51 +196,44 @@ function createProxyCardHTML(proxy) {
     else if (displayStatus === 'testing') statusDotColor = 'bg-blue-500';
     else if (displayStatus === 'offline') statusDotColor = 'bg-red-500';
 
+    const isChecked = selectedProxyIds.has(proxy.id);
+    const selectedClass = isChecked ? ' ring-2 ring-purple-400' : '';
+
     return `
-        <div id="proxy-card-${proxy.id}" class="proxy-card bg-white rounded-lg shadow-md overflow-hidden slide-in flex flex-col justify-between" onclick="selectProxy(${proxy.id})">
-            <div class="p-4">
-                <div class="flex justify-between items-start mb-3">
-                    <div class="flex items-center min-w-0">
-                        <img src="https://hatscripts.github.io/circle-flags/flags/${(proxy.country || 'xx').toLowerCase()}.svg" alt="${proxy.country}" class="flag-icon mr-2 flex-shrink-0">
-                        <div class="min-w-0">
-                            <h3 class="font-semibold text-gray-900 truncate">${getCountryName(proxy.country)}</h3>
-                            <p class="text-xs text-gray-500 truncate">${proxy.org || 'Unknown Org'}</p>
-                        </div>
-                    </div>
-                    <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${displayStatus === 'online' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">
-                        <span class="w-2 h-2 rounded-full mr-1 ${statusDotColor}"></span>
+        &lt;div id="proxy-card-${proxy.id}" class="proxy-card bg-white rounded-lg shadow-md overflow-hidden slide-in flex flex-col justify-between${selectedClass}" onclick="selectProxy(${proxy.id})"&gt;
+            &lt;div class="p-4"&gt;
+                &lt;div class="flex justify-between items-start mb-3"&gt;
+                    &lt;div class="flex items-center min-w-0"&gt;
+                        &lt;input type="checkbox" class="mr-2 proxy-select-checkbox" onclick="toggleProxySelection(event, ${proxy.id})" ${isChecked ? 'checked' : ''}&gt;
+                        &lt;img src="https://hatscripts.github.io/circle-flags/flags/${(proxy.country || 'xx').toLowerCase()}.svg" alt="${proxy.country}" class="flag-icon mr-2 flex-shrink-0"&gt;
+                        &lt;div class="min-w-0"&gt;
+                            &lt;h3 class="font-semibold text-gray-900 truncate"&gt;${getCountryName(proxy.country)}&lt;/h3&gt;
+                            &lt;p class="text-xs text-gray-500 truncate"&gt;${proxy.org || 'Unknown Org'}&lt;/p&gt;
+                        &lt;/div&gt;
+                    &lt;/div&gt;
+                    &lt;span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${displayStatus === 'online' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}"&gt;
+                        &lt;span class="w-2 h-2 rounded-full mr-1 ${statusDotColor}"&gt;&lt;/span&gt;
                         ${displayStatus}
-                    </span>
-                </div>
-                <div class="mb-4 space-y-2">
-                    <div class="text-sm text-gray-600"><i class="fas fa-server mr-2"></i><span class="font-medium">${proxy.proxyIP}</span></div>
-                    <div class="text-sm text-gray-600"><i class="fas fa-network-wired mr-2"></i>Port: <span class="font-medium">${proxy.proxyPort}</span></div>
-                    <div class="text-sm ${latencyClass} cursor-pointer" onclick="testProxyLatency(event, ${proxy.id})">
-                        <i class="fas fa-clock mr-2"></i>
+                    &lt;/span&gt;
+                &lt;/div&gt;
+                &lt;div class="mb-4 space-y-2"&gt;
+                    &lt;div class="text-sm text-gray-600"&gt;&lt;i class="fas fa-server mr-2"&gt;&lt;/i&gt;&lt;span class="font-medium"&gt;${proxy.proxyIP}&lt;/span&gt;&lt;/div&gt;
+                    &lt;div class="text-sm text-gray-600"&gt;&lt;i class="fas fa-network-wired mr-2"&gt;&lt;/i&gt;Port: &lt;span class="font-medium"&gt;${proxy.proxyPort}&lt;/span&gt;&lt;/div&gt;
+                    &lt;div class="text-sm ${latencyClass} cursor-pointer" onclick="testProxyLatency(event, ${proxy.id})"&gt;
+                        &lt;i class="fas fa-clock mr-2"&gt;&lt;/i&gt;
                         Latency:
-                        <span class="font-medium">${latencyText}</span>
-                    </div>
-                </div>
-            </div>
-            <div class="p-2 bg-gray-50 border-t border-gray-200">
-                <button class="w-full text-center px-3 py-1.5 bg-blue-500 text-white rounded-md text-xs font-semibold hover:bg-blue-600 transition-colors config-btn" onclick="openGenerateConfigModalForProxy(event, ${proxy.id})">
-                    <i class="fas fa-file-export mr-1"></i> Generate
-                </button>
-            </div>
-        </div>
+                        &lt;span class="font-medium"&gt;${latencyText}&lt;/span&gt;
+                    &lt;/div&gt;
+                &lt;/div&gt;
+            &lt;/div&gt;
+            &lt;div class="p-2 bg-gray-50 border-t border-gray-200"&gt;
+                &lt;button class="w-full text-center px-3 py-1.5 bg-blue-500 text-white rounded-md text-xs font-semibold hover:bg-blue-600 transition-colors config-btn" onclick="openGenerateConfigModalForProxy(event, ${proxy.id})"&gt;
+                    &lt;i class="fas fa-file-export mr-1"&gt;&lt;/i&gt; Generate
+                &lt;/button&gt;
+            &lt;/div&gt;
+        &lt;/div&gt;
     `;
-}
-
-function renderPagination() {
-    const pagination = document.getElementById('pagination');
-    const totalPages = Math.ceil(filteredProxies.length / pageSize);
-    pagination.innerHTML = '';
-    if (totalPages <= 1) return;
-
-    let paginationHTML = '';
-    const maxVisiblePages = 5;
-
-    paginationHTML += `<button class="px-3 py-1 rounded-md ${currentPage === 1 ? 'bg-gray-200 cursor-not-allowed' : 'bg-white border'}" ${currentPage === 1 ? 'disabled' : ''} onclick="changePage(${currentPage - 1})"><i class="fas fa-chevron-left"></i></button>`;
+}" ${currentPage === 1 ? 'disabled' : ''} onclick="changePage(${currentPage - 1})"><i class="fas fa-chevron-left"></i></button>`;
 
     if (totalPages > maxVisiblePages + 2) {
         let startPage = Math.max(2, currentPage - 2);
@@ -442,6 +453,100 @@ function showToast(message, type = 'info') {
     Toastify(options).showToast();
 }
 
+// --- Multi-selection helpers ---
+
+function restoreSelectionFromStorage() {
+    try {
+        if (typeof localStorage === 'undefined') return;
+        const raw = localStorage.getItem(SELECTION_STORAGE_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        if (!parsed || !Array.isArray(parsed.ids) || typeof parsed.timestamp !== 'number') return;
+        if (Date.now() - parsed.timestamp > SELECTION_TTL_MS) {
+            localStorage.removeItem(SELECTION_STORAGE_KEY);
+            return;
+        }
+        const existingIds = new Set(allProxies.map(p => p.id));
+        selectedProxyIds = new Set(parsed.ids.filter(id => existingIds.has(id)));
+    } catch (e) {
+        console.warn('[UI] Failed to restore proxy selection:', e);
+        selectedProxyIds = new Set();
+    }
+}
+
+function persistSelection() {
+    try {
+        if (typeof localStorage === 'undefined') return;
+        if (!selectedProxyIds.size) {
+            localStorage.removeItem(SELECTION_STORAGE_KEY);
+            return;
+        }
+        const payload = {
+            ids: Array.from(selectedProxyIds),
+            timestamp: Date.now()
+        };
+        localStorage.setItem(SELECTION_STORAGE_KEY, JSON.stringify(payload));
+    } catch (e) {
+        console.warn('[UI] Failed to persist proxy selection:', e);
+    }
+}
+
+function updateBulkActionsVisibility() {
+    const bulkGenerateBtn = document.getElementById('bulkGenerateBtn');
+    const bulkResetBtn = document.getElementById('bulkResetBtn');
+    const hasSelection = selectedProxyIds.size > 0;
+    if (bulkGenerateBtn) bulkGenerateBtn.classList.toggle('hidden', !hasSelection);
+    if (bulkResetBtn) bulkResetBtn.classList.toggle('hidden', !hasSelection);
+}
+
+function toggleProxySelection(event, proxyId) {
+    if (event) event.stopPropagation();
+
+    if (selectedProxyIds.has(proxyId)) {
+        selectedProxyIds.delete(proxyId);
+    } else {
+        selectedProxyIds.add(proxyId);
+    }
+
+    persistSelection();
+    updateBulkActionsVisibility();
+}
+window.toggleProxySelection = toggleProxySelection;
+
+function resetSelection() {
+    selectedProxyIds.clear();
+    persistSelection();
+    updateBulkActionsVisibility();
+    renderProxies();
+}
+window.resetSelection = resetSelection;
+
+function openBulkGenerateModal() {
+    if (!selectedProxyIds.size) {
+        showToast('Please select at least one proxy using the checkboxes.', 'warning');
+        return;
+    }
+
+    isBulkGenerate = true;
+
+    const workerSelect = document.getElementById('workerDomainSelect');
+    workerSelect.innerHTML = '<option value="">Select a worker domain</option>';
+    if (window.tunnels && window.tunnels.length > 0) {
+        window.tunnels.forEach(tunnel => {
+            const option = document.createElement('option');
+            option.value = tunnel.domain;
+            option.textContent = tunnel.name;
+            workerSelect.appendChild(option);
+        });
+    } else {
+        workerSelect.innerHTML = '<option value="">No tunnels configured</option>';
+    }
+
+    document.getElementById('uuidInput').value = generateUUID();
+    document.getElementById('generateConfigModal').classList.remove('hidden');
+}
+window.openBulkGenerateModal = openBulkGenerateModal;
+
 function selectProxy(proxyId) {
     selectedProxy = allProxies.find(p => p.id === proxyId);
 
@@ -463,13 +568,14 @@ window.selectProxy = selectProxy;
 
 function openGenerateConfigModalForProxy(event, proxyId) {
     event.stopPropagation();
+    isBulkGenerate = false;
     selectProxy(proxyId);
     openGenerateConfigModal();
 }
 window.openGenerateConfigModalForProxy = openGenerateConfigModalForProxy;
 
 function openGenerateConfigModal() {
-    if (!selectedProxy) {
+    if (!isBulkGenerate && !selectedProxy) {
         showToast('Please select a proxy first by clicking on its card.', 'warning');
         return;
     }
@@ -512,100 +618,155 @@ async function handleGenerateConfig() {
     const port = getSelectedPort('port-btn');
     const format = getSelectedFormat('format-btn');
     const workerDomain = document.getElementById('workerDomainSelect').value;
-    const uuid = document.getElementById('uuidInput').value;
+    const uuidField = document.getElementById('uuidInput').value;
     const customBug = document.getElementById('customBugInput').value.trim();
+    const bulkMode = isBulkGenerate;
 
-    if (!selectedProxy || !vpnType || !port || !format || !workerDomain || !uuid) {
+    if (!vpnType || !port || !format || !workerDomain) {
         return showToast('Please fill out all fields in the form.', 'warning');
     }
+    if (!bulkMode && (!selectedProxy || !uuidField)) {
+        return showToast('Please select a proxy and UUID/Password for single generation.', 'warning');
+    }
 
-    // Worker domain adalah domain Cloudflare Worker.
-    // Custom bug (jika diisi) akan menjadi server (outbound.server); workerDomain tetap untuk SNI & WS Host.
     const workerHost = workerDomain;
-    const bugHost = customBug || workerHost;
+    const bugHostBase = customBug || workerHost;
     const security = 'tls';
 
-    // Ambil IP dan port backend dari selectedProxy (proxy_data: IP:Port)
-    let ipPart = '';
-    let portPart = '';
-    if (selectedProxy.proxyIP && selectedProxy.proxyPort) {
-        ipPart = selectedProxy.proxyIP;
-        portPart = selectedProxy.proxyPort;
-    } else if (selectedProxy.proxy_data) {
-        const [ip, prt] = selectedProxy.proxy_data.split(':');
-        ipPart = ip || '';
-        portPart = prt || '443';
-    }
-    const path = encodeURIComponent(`/${ipPart}-${portPart}`);
-
-    const remark = encodeURIComponent(`${vpnType.toUpperCase()}-${selectedProxy.country || 'XX'}-1`);
-    let uri = '';
-
-    switch (vpnType) {
-        case 'trojan':
-            uri = `trojan://${uuid}@${bugHost}:${port}?path=${path}&security=${security}&host=${workerHost}&type=ws&sni=${workerHost}#${remark}`;
-            break;
-        case 'vless':
-            uri = `vless://${uuid}@${bugHost}:${port}?path=${path}&security=${security}&encryption=none&host=${workerHost}&type=ws&sni=${workerHost}#${remark}`;
-            break;
-        case 'ss': {
-            // Sama seperti di subscription generator: method chacha20-ietf-poly1305 + v2ray-plugin WS
-            const encodedPassword = btoa(`chacha20-ietf-poly1305:${uuid}`);
-            uri = `ss://${encodedPassword}@${bugHost}:${port}?plugin=v2ray-plugin;mode=websocket;path=${path};host=${workerHost};tls;sni=${workerHost}#${remark}`;
-            break;
+    const buildUriForProxy = (proxy, uuid, remark) => {
+        // Ambil IP dan port backend dari proxy (proxy_data: IP:Port)
+        let ipPart = '';
+        let portPart = '';
+        if (proxy.proxyIP && proxy.proxyPort) {
+            ipPart = proxy.proxyIP;
+            portPart = proxy.proxyPort;
+        } else if (proxy.proxy_data) {
+            const [ip, prt] = proxy.proxy_data.split(':');
+            ipPart = ip || '';
+            portPart = prt || '443';
         }
-        default:
-            return showToast('Unsupported VPN type selected.', 'error');
-    }
+        const path = encodeURIComponent(`/${ipPart}-${portPart}`);
 
-    let resultString = uri;
+        switch (vpnType) {
+            case 'trojan':
+                return `trojan://${uuid}@${bugHostBase}:${port}?path=${path}&security=${security}&host=${workerHost}&type=ws&sni=${workerHost}#${remark}`;
+            case 'vless':
+                return `vless://${uuid}@${bugHostBase}:${port}?path=${path}&security=${security}&encryption=none&host=${workerHost}&type=ws&sni=${workerHost}#${remark}`;
+            case 'ss': {
+                const encodedPassword = btoa(`chacha20-ietf-poly1305:${uuid}`);
+                return `ss://${encodedPassword}@${bugHostBase}:${port}?plugin=v2ray-plugin;mode=websocket;path=${path};host=${workerHost};tls;sni=${workerHost}#${remark}`;
+            }
+            default:
+                throw new Error('Unsupported VPN type selected.');
+        }
+    };
 
-    // Jika format Clash atau Singbox, gunakan converter built-in backend (/api/convert)
-    if (format === 'clash' || format === 'singbox') {
-        try {
-            const level = 'standard'; // default template level untuk per-proxy
-            const response = await fetch('/api/convert', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    links: [uri],
-                    format,
-                    level
-                })
-            });
+    let uris = [];
+    let firstUri = '';
+    let resultString = '';
 
-            if (!response.ok) {
-                let errorData = null;
-                try {
-                    errorData = await response.json();
-                } catch (_) {
-                    // ignore
-                }
-                console.error('[Proxy] Converter error:', errorData || response.statusText);
-                throw new Error(errorData?.error || errorData?.details || `API conversion failed (${response.status}): ${response.statusText}`);
+    try {
+        if (bulkMode) {
+            const proxiesToUse = allProxies.filter(p => selectedProxyIds.has(p.id));
+            if (!proxiesToUse.length) {
+                return showToast('No proxies selected. Please select at least one proxy.', 'warning');
             }
 
-            const payload = await response.json();
-            resultString = payload.content || '';
-        } catch (err) {
-            console.error('[Proxy] Error while converting config:', err);
-            showToast(`Converter error: ${err.message}`, 'error');
-            return;
+            uris = proxiesToUse.map((proxy, index) => {
+                const uuid = crypto.randomUUID();
+                const remark = encodeURIComponent(`${vpnType.toUpperCase()}-${proxy.country || 'XX'}-${index + 1}`);
+                return buildUriForProxy(proxy, uuid, remark);
+            });
+
+            firstUri = uris[0];
+
+            if (format === 'uri' || format === 'qrcode') {
+                resultString = uris.join('\n');
+            } else if (format === 'clash' || format === 'singbox') {
+                const level = 'standard';
+                const response = await fetch('/api/convert', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        links: uris,
+                        format,
+                        level
+                    })
+                });
+
+                if (!response.ok) {
+                    let errorData = null;
+                    try {
+                        errorData = await response.json();
+                    } catch (_) {
+                        // ignore
+                    }
+                    console.error('[Proxy] Bulk converter error:', errorData || response.statusText);
+                    throw new Error(errorData?.error || errorData?.details || `API conversion failed (${response.status}): ${response.statusText}`);
+                }
+
+                const payload = await response.json();
+                resultString = payload.content || '';
+            }
+        } else {
+            const remark = encodeURIComponent(`${vpnType.toUpperCase()}-${selectedProxy.country || 'XX'}-1`);
+            const uri = buildUriForProxy(selectedProxy, uuidField, remark);
+            uris = [uri];
+            firstUri = uri;
+
+            if (format === 'uri') {
+                resultString = uri;
+            } else if (format === 'clash' || format === 'singbox') {
+                const level = 'standard';
+                const response = await fetch('/api/convert', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        links: [uri],
+                        format,
+                        level
+                    })
+                });
+
+                if (!response.ok) {
+                    let errorData = null;
+                    try {
+                        errorData = await response.json();
+                    } catch (_) {
+                        // ignore
+                    }
+                    console.error('[Proxy] Converter error:', errorData || response.statusText);
+                    throw new Error(errorData?.error || errorData?.details || `API conversion failed (${response.status}): ${response.statusText}`);
+                }
+
+                const payload = await response.json();
+                resultString = payload.content || '';
+            } else if (format === 'qrcode') {
+                resultString = uri;
+            }
         }
+    } catch (err) {
+        console.error('[Proxy] Error while generating/converting config:', err);
+        showToast(`Converter error: ${err.message}`, 'error');
+        isBulkGenerate = false;
+        return;
     }
 
     const resultContent = document.getElementById('resultContent');
     const resultModal = document.getElementById('resultModal');
 
-    if (format === 'qrcode') {
-        const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(uri)}`;
+    if (format === 'qrcode' && !bulkMode) {
+        const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(firstUri)}`;
         resultContent.innerHTML = `<div class="text-center"><img src="${qrCodeUrl}" alt="QR Code" class="mx-auto mb-4"></div>`;
     } else {
-        resultContent.innerHTML = `<pre class="bg-gray-100 p-4 rounded-md text-sm break-all whitespace-pre-wrap">${resultString}</pre>`;
+        // Untuk bulk + qrcode, kita tampilkan list URI sebagai fallback.
+        const textToShow = format === 'qrcode' ? uris.join('\n') : resultString;
+        resultContent.innerHTML = `<pre class="bg-gray-100 p-4 rounded-md text-sm break-all whitespace-pre-wrap">${textToShow}</pre>`;
     }
 
     document.getElementById('generateConfigModal').classList.add('hidden');
     resultModal.classList.remove('hidden');
+    isBulkGenerate = false;
 }
 
 async function copyResultToClipboard() {
