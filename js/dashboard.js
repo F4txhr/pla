@@ -249,6 +249,9 @@ async function fetchCfUsage() {
         const offlineEl = document.getElementById('cfOfflineCount');
         const unknownEl = document.getElementById('cfUnknownCount');
         const listEl = document.getElementById('cfTunnelList');
+        const totalReqAllEl = document.getElementById('cfTotalRequestsAll');
+        const totalWorkerReqEl = document.getElementById('cfTotalWorkerReq');
+        const totalZoneMbEl = document.getElementById('cfTotalZoneMb');
 
         if (!onlineEl || !offlineEl || !unknownEl || !listEl) return;
 
@@ -258,12 +261,25 @@ async function fetchCfUsage() {
 
         if (!data.tunnels.length) {
             listEl.innerHTML = '<p class="text-sm text-gray-500">No tunnels configured for this user.</p>';
+            if (totalReqAllEl) totalReqAllEl.textContent = '0';
+            if (totalWorkerReqEl) totalWorkerReqEl.textContent = '0';
+            if (totalZoneMbEl) totalZoneMbEl.textContent = '0.00';
             return;
         }
 
         const zones = data.tunnels.filter(t => t.usage && t.usage.type === 'zone');
         const workers = data.tunnels.filter(t => t.usage && t.usage.type === 'worker');
         const others = data.tunnels.filter(t => !t.usage);
+
+        // Global totals across all tunnels
+        const totalZoneRequests = zones.reduce((sum, z) => sum + (z.usage.total_requests_today ?? 0), 0);
+        const totalZoneBytes = zones.reduce((sum, z) => sum + (z.usage.total_bandwidth_today_bytes ?? 0), 0);
+        const totalWorkerRequests = workers.reduce((sum, w) => sum + (w.usage.total_requests_today ?? 0), 0);
+        const totalRequestsAll = totalZoneRequests + totalWorkerRequests;
+
+        if (totalReqAllEl) totalReqAllEl.textContent = String(totalRequestsAll);
+        if (totalWorkerReqEl) totalWorkerReqEl.textContent = String(totalWorkerRequests);
+        if (totalZoneMbEl) totalZoneMbEl.textContent = (totalZoneBytes / (1024 * 1024)).toFixed(2);
 
         // If we have at least one zone tunnel, build a grouped \"card\" view:
         if (zones.length > 0) {
@@ -325,7 +341,7 @@ async function fetchCfUsage() {
                             <p class="text-xs text-gray-500">Zone ID: ${zoneUsage.zone_id || 'N/A'}</p>
                         </div>
                         <div class="text-right text-xs text-gray-700">
-                            <p>Today: ${zoneReq} req</p>
+                            <p>Today (zone): ${zoneReq} req</p>
                             <p>${zoneMb} MB</p>
                         </div>
                     </div>
