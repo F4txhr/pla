@@ -201,8 +201,10 @@ function openAddTunnelModal() {
     editingTunnelId = null;
     document.getElementById('tunnelModalTitle').textContent = 'Add New Tunnel';
     document.getElementById('tunnelForm').reset();
-    const cfInput = document.getElementById('tunnelCfStatsId');
-    if (cfInput) cfInput.value = '';
+    const workerInput = document.getElementById('tunnelWorkerName');
+    if (workerInput) workerInput.value = '';
+    const zoneInput = document.getElementById('tunnelZoneId');
+    if (zoneInput) zoneInput.value = '';
     const cfgSelect = document.getElementById('tunnelCfConfigSelect');
     if (cfgSelect) cfgSelect.value = '';
     document.getElementById('tunnelModal').classList.remove('hidden');
@@ -212,9 +214,23 @@ async function saveTunnel(e) {
     e.preventDefault();
     const name = document.getElementById('tunnelName').value;
     const domain = document.getElementById('tunnelDomain').value;
-    const cfStatsInput = document.getElementById('tunnelCfStatsId');
+    const workerInput = document.getElementById('tunnelWorkerName');
+    const zoneInput = document.getElementById('tunnelZoneId');
     const cfConfigSelect = document.getElementById('tunnelCfConfigSelect');
-    const cf_stats_id = cfStatsInput ? (cfStatsInput.value || '').trim() : null;
+
+    const workerName = workerInput ? (workerInput.value || '').trim() : '';
+    const zoneId = zoneInput ? (zoneInput.value || '').trim() : '';
+
+    let cf_stats_id = null;
+    if (workerName && zoneId) {
+        // Encode both worker and zone in a single field so analytics can use both.
+        cf_stats_id = `worker:${workerName};zone:${zoneId}`;
+    } else if (workerName) {
+        cf_stats_id = `worker:${workerName}`;
+    } else if (zoneId) {
+        cf_stats_id = `zone:${zoneId}`;
+    }
+
     const cf_config_id = cfConfigSelect && cfConfigSelect.value ? parseInt(cfConfigSelect.value, 10) : null;
 
     const method = editingTunnelId ? 'PATCH' : 'POST';
@@ -265,8 +281,28 @@ function editTunnel(tunnelId) {
     document.getElementById('tunnelModalTitle').textContent = 'Edit Tunnel';
     document.getElementById('tunnelName').value = tunnel.name;
     document.getElementById('tunnelDomain').value = tunnel.domain;
-    const cfInput = document.getElementById('tunnelCfStatsId');
-    if (cfInput) cfInput.value = tunnel.cf_stats_id || '';
+
+    const workerInput = document.getElementById('tunnelWorkerName');
+    const zoneInput = document.getElementById('tunnelZoneId');
+
+    let workerName = '';
+    let zoneId = '';
+    if (tunnel.cf_stats_id) {
+        const parts = tunnel.cf_stats_id.split(';').map(p => p.trim()).filter(Boolean);
+        parts.forEach(part => {
+            if (part.startsWith('worker:')) {
+                workerName = part.substring('worker:'.length).trim();
+            } else if (part.startsWith('zone:')) {
+                zoneId = part.substring('zone:'.length).trim();
+            } else if (!workerName) {
+                workerName = part;
+            }
+        });
+    }
+
+    if (workerInput) workerInput.value = workerName;
+    if (zoneInput) zoneInput.value = zoneId;
+
     const cfgSelect = document.getElementById('tunnelCfConfigSelect');
     if (cfgSelect) {
         cfgSelect.innerHTML = '<option value=\"\">No CF config</option>';

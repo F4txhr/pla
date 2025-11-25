@@ -536,13 +536,17 @@
                         </p>
                     </div>
                     <div class="mb-4">
-                        <label for="tunnelCfStatsId" class="block text-sm font-medium text-gray-700 mb-2">CF Stats ID (optional)</label>
-                        <input type="text" id="tunnelCfStatsId" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g. worker:my-worker or zone:ZONE_ID">
+                        <label for="tunnelWorkerName" class="block text-sm font-medium text-gray-700 mb-2">Worker Script Name (optional)</label>
+                        <input type="text" id="tunnelWorkerName" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g. my-worker">
                         <p class="text-sm text-gray-600 mt-1">
-                            Format:
-                            <br>- <strong>worker:NAME</strong> → use Worker analytics for script <code>NAME</code>
-                            <br>- <strong>zone:ZONE_ID</strong> → use Zone analytics for <code>ZONE_ID</code>
-                            <br>- <strong>NAME</strong> (without prefix) is treated as <code>worker:NAME</code>.
+                            This is the Cloudflare Worker script name used for worker analytics.
+                        </p>
+                    </div>
+                    <div class="mb-4">
+                        <label for="tunnelZoneId" class="block text-sm font-medium text-gray-700 mb-2">Zone ID (optional)</label>
+                        <input type="text" id="tunnelZoneId" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g. a9c7827b42c5b72fe983830ff7f0786e">
+                        <p class="text-sm text-gray-600 mt-1">
+                            This is the Cloudflare Zone ID used for zone-level analytics (requests &amp; bandwidth).
                         </p>
                     </div>
                     

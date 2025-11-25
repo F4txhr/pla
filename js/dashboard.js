@@ -271,13 +271,13 @@ async function fetchCfUsage() {
             return;
         }
 
-        const zones = data.tunnels.filter(t => t.usage && t.usage.type === 'zone');
-        const workers = data.tunnels.filter(t => t.usage && t.usage.type === 'worker');
+        const zones = data.tunnels.filter(t => t.usage && t.usage.zone);
+        const workers = data.tunnels.filter(t => t.usage && t.usage.worker);
 
         // Global totals across all tunnels
-        const totalZoneRequests = zones.reduce((sum, z) => sum + (z.usage.total_requests_today ?? 0), 0);
-        const totalZoneBytes = zones.reduce((sum, z) => sum + (z.usage.total_bandwidth_today_bytes ?? 0), 0);
-        const totalWorkerRequests = workers.reduce((sum, w) => sum + (w.usage.total_requests_today ?? 0), 0);
+        const totalZoneRequests = zones.reduce((sum, z) => sum + (z.usage.zone.total_requests_today ?? 0), 0);
+        const totalZoneBytes = zones.reduce((sum, z) => sum + (z.usage.zone.total_bandwidth_today_bytes ?? 0), 0);
+        const totalWorkerRequests = workers.reduce((sum, w) => sum + (w.usage.worker.total_requests_today ?? 0), 0);
         const totalRequestsAll = totalZoneRequests + totalWorkerRequests;
 
         if (totalReqAllEl) totalReqAllEl.textContent = String(totalRequestsAll);
@@ -293,10 +293,11 @@ async function fetchCfUsage() {
                 if (tunnel.status === 'offline') statusColor = 'text-red-600 bg-red-50';
 
                 let usageLine = '';
-                if (tunnel.usage && tunnel.usage.type === 'worker') {
-                    const req = tunnel.usage.total_requests_today ?? 0;
-                    const errCount = tunnel.usage.total_errors_today ?? 0;
-                    const cpuP90us = tunnel.usage.cpu_time_p90;
+                if (tunnel.usage && tunnel.usage.worker) {
+                    const wUsage = tunnel.usage.worker;
+                    const req = wUsage.total_requests_today ?? 0;
+                    const errCount = wUsage.total_errors_today ?? 0;
+                    const cpuP90us = wUsage.cpu_time_p90;
                     const cpuP90ms = cpuP90us != null ? (cpuP90us / 1000).toFixed(2) : null;
                     const cpuPart = cpuP90ms != null ? `, CPU p90: ${cpuP90ms} ms` : '';
                     usageLine = `<p class="text-xs text-gray-500">Today: ${req} req, ${errCount} errors${cpuPart}</p>`;
@@ -325,20 +326,20 @@ async function fetchCfUsage() {
             const cfgTunnels = data.tunnels.filter(t => t.cf_config_id === cfg.id);
             if (!cfgTunnels.length) return;
 
-            const cfgZones = cfgTunnels.filter(t => t.usage && t.usage.type === 'zone');
-            const cfgWorkers = cfgTunnels.filter(t => t.usage && t.usage.type === 'worker');
-            const cfgOthers = cfgTunnels.filter(t => !t.usage);
+            const cfgZones = cfgTunnels.filter(t => t.usage && t.usage.zone);
+            const cfgWorkers = cfgTunnels.filter(t => t.usage && t.usage.worker);
+            const cfgOthers = cfgTunnels.filter(t => !t.usage || (!t.usage.zone && !t.usage.worker));
 
-            const cfgZoneReq = cfgZones.reduce((sum, z) => sum + (z.usage.total_requests_today ?? 0), 0);
-            const cfgZoneBytes = cfgZones.reduce((sum, z) => sum + (z.usage.total_bandwidth_today_bytes ?? 0), 0);
+            const cfgZoneReq = cfgZones.reduce((sum, z) => sum + (z.usage.zone.total_requests_today ?? 0), 0);
+            const cfgZoneBytes = cfgZones.reduce((sum, z) => sum + (z.usage.zone.total_bandwidth_today_bytes ?? 0), 0);
             const cfgZoneMb = (cfgZoneBytes / (1024 * 1024)).toFixed(2);
 
             const title = cfg.label || `Config ${cfg.id}`;
             const accountLine = cfg.cf_account_id ? `Account: ${cfg.cf_account_id}` : 'Account: (none)';
 
             const zoneSample = cfgZones[0];
-            const zoneSampleLine = zoneSample && zoneSample.usage?.zone_id
-                ? `Zone sample: ${zoneSample.usage.zone_id}`
+            const zoneSampleLine = zoneSample && zoneSample.usage?.zone?.zone_id
+                ? `Zone sample: ${zoneSample.usage.zone.zone_id}`
                 : '';
 
             const workerLines = cfgWorkers.map((tunnel) => {
@@ -346,9 +347,10 @@ async function fetchCfUsage() {
                 if (tunnel.status === 'online') statusColor = 'text-green-600 bg-green-50';
                 if (tunnel.status === 'offline') statusColor = 'text-red-600 bg-red-50';
 
-                const req = tunnel.usage.total_requests_today ?? 0;
-                const errCount = tunnel.usage.total_errors_today ?? 0;
-                const cpuP90us = tunnel.usage.cpu_time_p90;
+                const wUsage = tunnel.usage.worker;
+                const req = wUsage.total_requests_today ?? 0;
+                const errCount = wUsage.total_errors_today ?? 0;
+                const cpuP90us = wUsage.cpu_time_p90;
                 const cpuP90ms = cpuP90us != null ? (cpuP90us / 1000).toFixed(2) : null;
                 const cpuPart = cpuP90ms != null ? `, CPU p90: ${cpuP90ms} ms` : '';
 

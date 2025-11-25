@@ -111,93 +111,128 @@ export default async function handler(request, response) {
                     t => t.cf_stats_id && t.cf_config_id && t.cf_config_id === cfg.id
                 );
 
-                await Promise.all(
-                    tunnelsForCfg.map(async (tunnel) => {
-                        const rawId = tunnel.cf_stats_id || '';
-                        let type = 'worker';
-                        let zoneId = null;
-                        let workerName = null;
+                const tasks = [];
 
-                        if (rawId.startsWith('zone:')) {
-                            type = 'zone';
-                            zoneId = rawId.substring('zone:'.length).trim();
-                        } else if (rawId.startsWith('worker:')) {
-                            type = 'worker';
-                            workerName = rawId.substring('worker:'.length).trim();
-                        } else {
-                            type = 'worker';
-                            workerName = rawId.trim();
+                tunnelsForCfg.forEach((tunnel) => {
+                    const rawId = tunnel.cf_stats_id || '';
+                    const parts = rawId.split(';').map(p => p.trim()).filter(Boolean);
+
+                    let workerName = null;
+                    let zoneId = null;
+
+                    parts.forEach(part => {
+                        if (part.startsWith('worker:')) {
+                            workerName = part.substring('worker:'.length).trim();
+                        } else if (part.startsWith('zone:')) {
+                            zoneId = part.substring('zone:'.length).trim();
+                        } else if (!workerName) {
+                            workerName = part;
                         }
+                    });
 
-                        if (type === 'zone' && !zoneId) return;
-                        if (type === 'worker' && (!workerName || !cfAccountId)) return;
+                    if (zoneId) {
+                        const zoneQuery = getZoneAnalyticsQuery(zoneId, today, tomorrowStr);
+                        tasks.push(
+                            (async () => {
+                                try {
+                                    const res = await fetch('https://api.cloudflare.com/client/v4/graphql', {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/json',
+                                            'Authorization': `Bearer ${cfToken}`,
+                                            'User-Agent': BROWSER_USER_AGENT
+                                        },
+                                        body: JSON.stringify({ query: zoneQuery })
+                                    });
 
-                        let queryStr;
-                        if (type === 'zone') {
-                            queryStr = getZoneAnalyticsQuery(zoneId, today, tomorrowStr);
-                        } else {
-                            queryStr = getWorkerAnalyticsQuery(cfAccountId, workerName, today, tomorrowStr);
-                        }
+                                    if (!res.ok) {
+                                        console.warn('[cf-usage] CF GraphQL zone request failed for tunnel', tunnel.id, 'status', res.status);
+                                        return;
+                                    }
 
-                        try {
-                            const res = await fetch('https://api.cloudflare.com/client/v4/graphql', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Authorization': `Bearer ${cfToken}`,
-                                    'User-Agent': BROWSER_USER_AGENT
-                                },
-                                body: JSON.stringify({ query: queryStr })
-                            });
+                                    const json = await res.json();
+                                    if (json.errors) {
+                                        console.warn('[cf-usage] CF GraphQL zone errors for tunnel', tunnel.id, json.errors);
+                                        return;
+                                    }
 
-                            if (!res.ok) {
-                                console.warn('[cf-usage] CF GraphQL request failed for tunnel', tunnel.id, 'status', res.status);
-                                return;
-                            }
+                                    const group =
+                                        json?.data?.viewer?.zones?.[0]?.httpRequestsAdaptiveGroups?.[0] || {};
+                                    const count = group.count || 0;
+                                    const sum = group.sum || { edgeResponseBytes: 0 };
 
-                            const json = await res.json();
-                            if (json.errors) {
-                                console.warn('[cf-usage] CF GraphQL errors for tunnel', tunnel.id, json.errors);
-                                return;
-                            }
+                                    const existing = usageByTunnelId[tunnel.id] || { zone: null, worker: null };
+                                    existing.zone = {
+                                        zone_id: zoneId,
+                                        total_requests_today: count,
+                                        total_bandwidth_today_bytes: sum.edgeResponseBytes || 0
+                                    };
+                                    usageByTunnelId[tunnel.id] = existing;
+                                } catch (err) {
+                                    console.error('[cf-usage] Error fetching CF zone stats for tunnel', tunnel.id, err.message);
+                                }
+                            })()
+                        );
+                    }
 
-                            if (type === 'zone') {
-                                const group =
-                                    json?.data?.viewer?.zones?.[0]?.httpRequestsAdaptiveGroups?.[0] || {};
-                                const count = group.count || 0;
-                                const sum = group.sum || { edgeResponseBytes: 0 };
-                                usageByTunnelId[tunnel.id] = {
-                                    type: 'zone',
-                                    zone_id: zoneId,
-                                    total_requests_today: count,
-                                    total_bandwidth_today_bytes: sum.edgeResponseBytes || 0
-                                };
-                            } else {
-                                const invocation =
-                                    json?.data?.viewer?.accounts?.[0]?.workersInvocationsAdaptive?.[0] || {};
-                                const sum = invocation.sum || { requests: 0, subrequests: 0, errors: 0 };
-                                const quantiles = invocation.quantiles || {
-                                    cpuTimeP50: null,
-                                    cpuTimeP90: null,
-                                    cpuTimeP99: null
-                                };
-                                usageByTunnelId[tunnel.id] = {
-                                    type: 'worker',
-                                    worker_name: workerName,
-                                    total_requests_today: sum.requests || 0,
-                                    total_subrequests_today: sum.subrequests || 0,
-                                    total_errors_today: sum.errors || 0,
-                                    cpu_time_p50: quantiles.cpuTimeP50,
-                                    cpu_time_p90: quantiles.cpuTimeP90,
-                                    cpu_time_p99: quantiles.cpuTimeP99,
-                                    note: 'CPU time is in microseconds (µs).'
-                                };
-                            }
-                        } catch (err) {
-                            console.error('[cf-usage] Error fetching CF stats for tunnel', tunnel.id, err.message);
-                        }
-                    })
-                );
+                    if (workerName && cfAccountId) {
+                        const workerQuery = getWorkerAnalyticsQuery(cfAccountId, workerName, today, tomorrowStr);
+                        tasks.push(
+                            (async () => {
+                                try {
+                                    const res = await fetch('https://api.cloudflare.com/client/v4/graphql', {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/json',
+                                            'Authorization': `Bearer ${cfToken}`,
+                                            'User-Agent': BROWSER_USER_AGENT
+                                        },
+                                        body: JSON.stringify({ query: workerQuery })
+                                    });
+
+                                    if (!res.ok) {
+                                        console.warn('[cf-usage] CF GraphQL worker request failed for tunnel', tunnel.id, 'status', res.status);
+                                        return;
+                                    }
+
+                                    const json = await res.json();
+                                    if (json.errors) {
+                                        console.warn('[cf-usage] CF GraphQL worker errors for tunnel', tunnel.id, json.errors);
+                                        return;
+                                    }
+
+                                    const invocation =
+                                        json?.data?.viewer?.accounts?.[0]?.workersInvocationsAdaptive?.[0] || {};
+                                    const sum = invocation.sum || { requests: 0, subrequests: 0, errors: 0 };
+                                    const quantiles = invocation.quantiles || {
+                                        cpuTimeP50: null,
+                                        cpuTimeP90: null,
+                                        cpuTimeP99: null
+                                    };
+
+                                    const existing = usageByTunnelId[tunnel.id] || { zone: null, worker: null };
+                                    existing.worker = {
+                                        worker_name: workerName,
+                                        total_requests_today: sum.requests || 0,
+                                        total_subrequests_today: sum.subrequests || 0,
+                                        total_errors_today: sum.errors || 0,
+                                        cpu_time_p50: quantiles.cpuTimeP50,
+                                        cpu_time_p90: quantiles.cpuTimeP90,
+                                        cpu_time_p99: quantiles.cpuTimeP99,
+                                        note: 'CPU time is in microseconds (µs).'
+                                    };
+                                    usageByTunnelId[tunnel.id] = existing;
+                                } catch (err) {
+                                    console.error('[cf-usage] Error fetching CF worker stats for tunnel', tunnel.id, err.message);
+                                }
+                            })()
+                        );
+                    }
+                });
+
+                if (tasks.length) {
+                    await Promise.all(tasks);
+                }
             }
         } else {
             if (data.some(t => t.cf_stats_id)) {
