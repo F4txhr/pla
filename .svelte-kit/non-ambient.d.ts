@@ -27,24 +27,18 @@ export {};
 
 declare module "$app/types" {
 	export interface AppTypes {
-		RouteId(): "/" | "/accounts" | "/api" | "/api/accounts" | "/api/proxies" | "/api/stats" | "/api/subscription" | "/api/tunnels" | "/proxy" | "/subscription" | "/tunnels";
+		RouteId(): "/" | "/accounts" | "/proxy" | "/subscription" | "/tunnels";
 		RouteParams(): {
 
 		};
 		LayoutParams(): {
 			"/": Record<string, never>;
 			"/accounts": Record<string, never>;
-			"/api": Record<string, never>;
-			"/api/accounts": Record<string, never>;
-			"/api/proxies": Record<string, never>;
-			"/api/stats": Record<string, never>;
-			"/api/subscription": Record<string, never>;
-			"/api/tunnels": Record<string, never>;
 			"/proxy": Record<string, never>;
 			"/subscription": Record<string, never>;
 			"/tunnels": Record<string, never>
 		};
-		Pathname(): "/" | "/accounts" | "/accounts/" | "/api" | "/api/" | "/api/accounts" | "/api/accounts/" | "/api/proxies" | "/api/proxies/" | "/api/stats" | "/api/stats/" | "/api/subscription" | "/api/subscription/" | "/api/tunnels" | "/api/tunnels/" | "/proxy" | "/proxy/" | "/subscription" | "/subscription/" | "/tunnels" | "/tunnels/";
+		Pathname(): "/" | "/accounts" | "/accounts/" | "/proxy" | "/proxy/" | "/subscription" | "/subscription/" | "/tunnels" | "/tunnels/";
 		ResolvedPathname(): `${"" | `/${string}`}${ReturnType<AppTypes['Pathname']>}`;
 		Asset(): "/robots.txt" | string & {};
 	}
