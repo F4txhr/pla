@@ -5,6 +5,18 @@
 	"/accounts": [
 		"src/routes/accounts/+page.server.js"
 	],
+	"/api/accounts": [
+		"src/routes/api/accounts/+server.js"
+	],
+	"/api/proxies": [
+		"src/routes/api/proxies/+server.js"
+	],
+	"/api/stats": [
+		"src/routes/api/stats/+server.js"
+	],
+	"/api/tunnels": [
+		"src/routes/api/tunnels/+server.js"
+	],
 	"/proxy": [
 		"src/routes/proxy/+page.server.js"
 	],
