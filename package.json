@@ -28,6 +28,7 @@
 	},
 	"dependencies": {
 		"@supabase/supabase-js": "^2.89.0",
+		"@sveltejs/adapter-vercel": "^6.2.0",
 		"svelte-sonner": "^1.0.7"
 	}
 }
