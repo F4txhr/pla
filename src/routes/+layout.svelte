@@ -21,6 +21,7 @@
       <a href="/" class="block px-4 py-2 hover:bg-gray-800">Dashboard</a>
       <a href="/proxy" class="block px-4 py-2 hover:bg-gray-800">Proxies</a>
       <a href="/accounts" class="block px-4 py-2 hover:bg-gray-800">Accounts</a>
+      <a href="/tunnels" class="block px-4 py-2 hover:bg-gray-800">Tunnels</a>
       <a href="/subscription" class="block px-4 py-2 hover:bg-gray-800"
         >Subscription</a
       >

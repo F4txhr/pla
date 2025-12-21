@@ -27,6 +27,7 @@
 		"vitest": "^4.0.16"
 	},
 	"dependencies": {
-		"@supabase/supabase-js": "^2.89.0"
+		"@supabase/supabase-js": "^2.89.0",
+		"svelte-sonner": "^1.0.7"
 	}
 }
