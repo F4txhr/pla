@@ -1,21 +1,31 @@
 {
-  "name": "vpn-manager-vercel",
-  "version": "1.0.0",
-  "description": "A VPN management dashboard deployed on Vercel with Supabase.",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "dev": "vercel dev",
-    "dev:local": "node local-dev-server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "author": "",
-  "license": "ISC",
-  "dependencies": {
-    "@supabase/supabase-js": "^2.38.4"
-  },
-  "devDependencies": {
-    "dotenv": "^16.3.1",
-    "vercel": "^32.5.0"
-  }
+	"name": "temp-svelte",
+	"private": true,
+	"version": "0.0.1",
+	"type": "module",
+	"scripts": {
+		"dev": "vite dev",
+		"build": "vite build",
+		"preview": "vite preview",
+		"prepare": "svelte-kit sync || echo ''",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
+	},
+	"devDependencies": {
+		"@sveltejs/adapter-auto": "^7.0.0",
+		"@sveltejs/kit": "^2.49.1",
+		"@sveltejs/vite-plugin-svelte": "^6.2.1",
+		"autoprefixer": "^10.4.23",
+		"postcss": "^8.5.6",
+		"svelte": "^5.45.6",
+		"svelte-check": "^4.3.4",
+		"svelte-preprocess": "^6.0.3",
+		"tailwindcss": "^3.4.19",
+		"typescript": "^5.9.3",
+		"vite": "^7.2.6",
+		"vitest": "^4.0.16"
+	},
+	"dependencies": {
+		"@supabase/supabase-js": "^2.89.0"
+	}
 }

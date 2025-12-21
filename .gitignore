@@ -1,10 +1,23 @@
-# Dependencies
-/node_modules
+node_modules
 
-# Vercel
-/.vercel
-/vercel.json
+# Output
+.output
+.vercel
+.netlify
+.wrangler
+/.svelte-kit
+/build
 
-# Environment
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
 .env
-.env*.local
+.env.*
+!.env.example
+!.env.test
+
+# Vite
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
