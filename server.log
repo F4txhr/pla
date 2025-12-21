@@ -1,0 +1,58 @@
+
+> temp-svelte@0.0.1 dev
+> vite dev
+
+4:21:18 AM [vite] (client) Re-optimizing dependencies because lockfile has changed
+
+  VITE v7.3.0  ready in 4833 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: use --host to expose
+Error fetching dashboard stats: {
+  message: 'TypeError: fetch failed',
+  details: 'TypeError: fetch failed\n' +
+    '\n' +
+    'Caused by: Error: getaddrinfo ENOTFOUND your-project-id.supabase.co (ENOTFOUND)\n' +
+    'Error: getaddrinfo ENOTFOUND your-project-id.supabase.co\n' +
+    '    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:122:26)\n' +
+    '    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)',
+  hint: '',
+  code: ''
+}
+Stats passed to page: {
+  error: 'Failed to retrieve dashboard statistics.',
+  details: 'TypeError: fetch failed'
+}
+4:21:39 AM [vite-plugin-svelte] src/routes/+layout.svelte:32:6 Buttons and links should either contain text or have an `aria-label`, `aria-labelledby` or `title` attribute
+https://svelte.dev/e/a11y_consider_explicit_label
+Error fetching dashboard stats: {
+  message: 'TypeError: fetch failed',
+  details: 'TypeError: fetch failed\n' +
+    '\n' +
+    'Caused by: Error: getaddrinfo ENOTFOUND your-project-id.supabase.co (ENOTFOUND)\n' +
+    'Error: getaddrinfo ENOTFOUND your-project-id.supabase.co\n' +
+    '    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:122:26)\n' +
+    '    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)',
+  hint: '',
+  code: ''
+}
+Stats passed to page: {
+  error: 'Failed to retrieve dashboard statistics.',
+  details: 'TypeError: fetch failed'
+}
+Error fetching dashboard stats: {
+  message: 'TypeError: fetch failed',
+  details: 'TypeError: fetch failed\n' +
+    '\n' +
+    'Caused by: Error: getaddrinfo ENOTFOUND your-project-id.supabase.co (ENOTFOUND)\n' +
+    'Error: getaddrinfo ENOTFOUND your-project-id.supabase.co\n' +
+    '    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:122:26)\n' +
+    '    at GetAddrInfoReqWrap.callbackTrampoline (node:internal/async_hooks:130:17)',
+  hint: '',
+  code: ''
+}
+Stats passed to page: {
+  error: 'Failed to retrieve dashboard statistics.',
+  details: 'TypeError: fetch failed'
+}
+4:22:47 AM [vite] (ssr) page reload src/routes/api/stats/+server.js

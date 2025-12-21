@@ -1,97 +1,86 @@
-# VPN Manager Dashboard (Vercel & Supabase Edition)
+# VPN Manager Dashboard (SvelteKit & Supabase Edition)
 
-VPN Manager adalah dasbor web berkinerja tinggi yang dirancang untuk menyederhanakan pengelolaan dan pemantauan layanan proksi/VPN Anda. Aplikasi ini dibangun di atas arsitektur serverless modern menggunakan **Vercel** untuk hosting dan **Supabase** untuk database PostgreSQL.
+VPN Manager is a high-performance web dashboard designed to simplify the management and monitoring of your proxy/VPN services. This application has been completely rebuilt with a modern, responsive, and animated UI using **SvelteKit** and **TailwindCSS**, with a **Supabase** backend.
 
-Ini menyediakan antarmuka yang ramah pengguna untuk mengelola proksi, akun, dan konfigurasi terowongan tanpa perlu berinteraksi dengan antarmuka baris perintah atau file konfigurasi yang rumit.
-
----
-
-## ✨ Fitur Utama
-
-- **Dasbor Terpusat**: Dapatkan gambaran umum waktu nyata tentang layanan Anda, termasuk jumlah total proksi, proksi yang sedang online, terowongan aktif, dan akun pengguna.
-- **Manajemen Proksi**: Tambah, lihat, dan kelola daftar proksi Anda dengan mudah.
-- **Manajemen Akun**: Kontrol siapa yang memiliki akses ke layanan Anda dengan mengelola akun pengguna.
-- **Backend Bertenaga Supabase**: Menggunakan database PostgreSQL yang kuat untuk penyimpanan data yang andal dan dapat diskalakan.
-- **Penerapan Mudah**: Dihosting di Vercel untuk penerapan berkelanjutan yang mulus dan kinerja global.
-- **Desain Responsif**: Antarmuka yang bersih dan modern yang berfungsi dengan baik di perangkat desktop dan seluler.
+It provides a user-friendly interface to manage proxies, accounts, and tunnel configurations without needing to interact with a command-line interface or complex configuration files.
 
 ---
 
-## 🚀 Arsitektur & Teknologi
+## ✨ Key Features
 
-Proyek ini telah dimigrasikan ke tumpukan teknologi yang kuat dan dapat diskalakan:
-
-- **Frontend**:
-  - **HTML, CSS, dan JavaScript**: Fondasi standar web.
-  - **TailwindCSS**: Kerangka kerja CSS utilitas pertama untuk membangun desain kustom dengan cepat.
-- **Backend**: **Vercel Serverless Functions** menangani semua logika sisi server. Setiap file di direktori `api/` menjadi endpoint API tanpa server.
-- **Database**: **Supabase** menyediakan backend PostgreSQL, memungkinkan kueri relasional yang kompleks dan skalabilitas yang lebih baik dibandingkan dengan penyimpanan nilai-kunci.
-
-### Alur Kerja Aplikasi
-1.  Pengguna mengakses URL aplikasi yang dihosting di Vercel.
-2.  Vercel menyajikan aset frontend statis (HTML, CSS, JS).
-3.  JavaScript frontend kemudian membuat panggilan API ke endpoint Vercel Function (misalnya, `/api/stats`).
-4.  Fungsi serverless mengeksekusi, terhubung ke database Supabase menggunakan kredensial yang aman.
-5.  Fungsi mengambil atau menulis data ke database PostgreSQL.
-6.  Data dikembalikan ke frontend sebagai JSON, yang kemudian memperbarui antarmuka pengguna secara dinamis.
+- **Centralized Dashboard**: Get a real-time overview of your services, including total proxies, online proxies, active tunnels, and user accounts.
+- **Proxy Management**: Easily add, view, and manage your list of proxies.
+- **Account Management**: Control who has access to your services by managing user accounts.
+- **Supabase-Powered Backend**: Utilizes a powerful PostgreSQL database for reliable and scalable data storage.
+- **Modern Frontend**: A clean, responsive, and animated interface built with SvelteKit and TailwindCSS.
 
 ---
 
-## 🔧 Panduan Penyiapan Pengembangan Lokal
+## 🚀 Architecture & Technology
 
-Ikuti langkah-langkah ini untuk menjalankan salinan proyek di mesin lokal Anda (misalnya, untuk debugging di Termux).
+The project has been migrated to a modern, scalable, and secure technology stack:
 
-### Prasyarat
-- [Node.js](https://nodejs.org/) dan [npm](https://www.npmjs.com/) terinstal.
-- Akun [Supabase](https://supabase.com/) dan proyek baru yang telah dibuat.
-- [Vercel CLI](https://vercel.com/docs/cli) terinstal (`npm install -g vercel`).
+- **Frontend**: **SvelteKit** with **TailwindCSS** for a reactive, performant, and beautiful user interface.
+- **Backend**: **SvelteKit Server Routes** handle all server-side logic. Each `+server.js` file in the `src/routes/api` directory becomes a serverless API endpoint.
+- **Database**: **Supabase** provides the PostgreSQL backend, enabling complex relational queries and better scalability.
 
-### Langkah 1: Kloning Repositori
-Kloning repositori ini ke mesin lokal Anda.
+### Application Workflow
+1.  The user accesses the application.
+2.  SvelteKit renders the application, fetching data from the API endpoints as needed.
+3.  The SvelteKit server routes execute, connecting to the Supabase database using secure, private environment variables.
+4.  The functions retrieve or write data to the PostgreSQL database.
+5.  The data is returned to the frontend as JSON, which then dynamically updates the user interface.
 
-### Langkah 2: Instal Dependensi
-Arahkan ke direktori proyek dan instal dependensi yang diperlukan.
+---
+
+## 🔧 Local Development Setup Guide
+
+Follow these steps to run a copy of the project on your local machine.
+
+### Prerequisites
+- [Node.js](https://nodejs.org/) and [npm](https://www.npmjs.com/) installed.
+- A [Supabase](https://supabase.com/) account and a new project created.
+
+### Step 1: Clone the Repository
+Clone this repository to your local machine.
+
+### Step 2: Install Dependencies
+Navigate to the project directory and install the required dependencies.
 ```sh
 npm install
 ```
 
-### Langkah 3: Siapkan Database Supabase
-Database Anda perlu disiapkan dengan tabel dan kebijakan keamanan yang benar.
+### Step 3: Set Up the Supabase Database
+Your database needs to be set up with the correct tables and security policies.
 
-1.  Buka proyek Anda di Dasbor Supabase.
-2.  Navigasi ke **SQL Editor**.
-3.  Buka file `setup.sql` di repositori ini, salin seluruh isinya.
-4.  Tempelkan skrip SQL ke editor di Supabase dan klik **"RUN"**. Ini akan membuat tabel `proxies`, `accounts`, `tunnels`, dan `metadata`.
+1.  Open your project in the Supabase Dashboard.
+2.  Navigate to the **SQL Editor**.
+3.  Open the `setup.sql` file in this repository and copy its entire content.
+4.  Paste the SQL script into the editor in Supabase and click **"RUN"**. This will create the `proxies`, `accounts`, `tunnels`, and `metadata` tables.
 
-### Langkah 4: Konfigurasikan Variabel Lingkungan
-Aplikasi perlu mengetahui cara terhubung ke database Supabase Anda.
+### Step 4: Configure Environment Variables
+The application needs to know how to connect to your Supabase database.
 
-1.  Buat file baru di direktori root proyek Anda bernama `.env.local`.
-2.  Temukan kredensial API Anda di dasbor Supabase di bawah **Project Settings > API**.
-3.  Tambahkan konten berikut ke file `.env.local` Anda, ganti dengan kunci Anda sendiri:
+1.  Create a new file in the project's root directory named `.env`.
+2.  Find your API credentials in your Supabase dashboard under **Project Settings > API**.
+3.  Add the following content to your `.env` file, replacing the placeholders with your own keys:
 
     ```
-    # Kredensial Proyek Supabase
-    SUPABASE_URL="URL_PROYEK_SUPABASE_ANDA"
-    SUPABASE_ANON_KEY="KUNCI_ANON_PUBLIK_SUPABASE_ANDA"
+    # Supabase Project Credentials
+    SUPABASE_URL="YOUR_SUPABASE_PROJECT_URL"
+    SUPABASE_ANON_KEY="YOUR_SUPABASE_PUBLIC_ANON_KEY"
     ```
 
-### Langkah 5: Jalankan Server Pengembangan Lokal
-Sekarang Anda dapat memulai server pengembangan lokal menggunakan Vercel CLI.
+### Step 5: Run the Local Development Server
+You can now start the local development server.
 
 ```sh
 npm run dev
-# Atau jalankan langsung:
-# vercel dev
 ```
-Vercel CLI akan memulai server di `localhost:3000`, menyajikan file frontend Anda dan menjalankan fungsi API Anda. Anda sekarang dapat membuka `http://localhost:3000` di browser Anda untuk melihat aplikasi berjalan.
+The SvelteKit development server will start on `localhost:5173`. You can now open `http://localhost:5173` in your browser to see the application running.
 
 ---
 
-## 📦 Penerapan ke Vercel
+## 📦 Deployment
 
-Untuk menerapkan proyek ini ke produksi:
-1.  Dorong kode Anda ke repositori Git (GitHub, GitLab, dll.).
-2.  Impor proyek Git Anda di dasbor Vercel.
-3.  Konfigurasikan **Variabel Lingkungan** di pengaturan proyek Vercel Anda. Tambahkan `SUPABASE_URL` dan `SUPABASE_ANON_KEY` dengan nilai yang sama seperti yang Anda gunakan di file `.env.local` Anda.
-4.  Terapkan. Vercel akan secara otomatis membangun dan menerapkan proyek Anda.
+This application is designed to be deployed on any platform that supports Node.js and SvelteKit, such as Vercel or Netlify. When deploying, you will need to configure the `SUPABASE_URL` and `SUPABASE_ANON_KEY` environment variables in your hosting provider's settings.
