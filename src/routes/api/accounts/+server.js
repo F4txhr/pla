@@ -5,9 +5,8 @@ import {
   SUPABASE_ANON_KEY,
 } from "$env/static/private";
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
 export async function GET() {
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   try {
     const { data: accounts, error } = await supabase.from("accounts").select("*");
     if (error) throw error;
@@ -19,6 +18,7 @@ export async function GET() {
 }
 
 export async function POST({ request }) {
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   const { username, secret_key } = await request.json();
   try {
     const { data, error } = await supabase.from("accounts").insert({ username, secret_key }).select();
@@ -31,6 +31,7 @@ export async function POST({ request }) {
 }
 
 export async function PATCH({ request }) {
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   const { id, ...updateData } = await request.json();
   try {
     const { data, error } = await supabase.from("accounts").update(updateData).eq("id", id).select();
@@ -43,6 +44,7 @@ export async function PATCH({ request }) {
 }
 
 export async function DELETE({ request }) {
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   const { id } = await request.json();
   try {
     const { error } = await supabase.from("accounts").delete().eq("id", id);

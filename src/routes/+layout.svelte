@@ -20,6 +20,7 @@
     <nav class="mt-8">
       <a href="/" class="block px-4 py-2 hover:bg-gray-800">Dashboard</a>
       <a href="/proxy" class="block px-4 py-2 hover:bg-gray-800">Proxies</a>
+      <a href="/accounts" class="block px-4 py-2 hover:bg-gray-800">Accounts</a>
       <a href="/subscription" class="block px-4 py-2 hover:bg-gray-800"
         >Subscription</a
       >
@@ -29,7 +30,7 @@
   <!-- Main Content -->
   <div class="flex flex-1 flex-col">
     <header class="bg-white p-4 shadow-md md:hidden">
-      <button on:click={toggleMenu}>
+      <button on:click={toggleMenu} aria-label="Open menu">
         <svg
           class="h-6 w-6"
           fill="none"
